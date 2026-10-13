@@ -1,0 +1,47 @@
+@import url('./base.css');
+@import url('./layout.css');
+@import url('./about.css');
+@import url('./projects.css');
+@import url('./admin.css');
+@import url('./experience.css?v=20261010-search-release');
+@import url('./consent.css?v=20261006-consent');
+
+@view-transition {
+	navigation: auto;
+}
+
+html {
+	scroll-behavior: smooth;
+}
+
+::view-transition-old(root) {
+	animation: navigation-fade-out 240ms ease-out both;
+}
+
+::view-transition-new(root) {
+	animation: navigation-fade-in 360ms var(--ease-premium) both;
+}
+
+@keyframes navigation-fade-out {
+	to { opacity: 0; }
+}
+
+@keyframes navigation-fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	@view-transition {
+		navigation: none;
+	}
+
+	html {
+		scroll-behavior: auto;
+	}
+
+	::view-transition-old(root),
+	::view-transition-new(root) {
+		animation: none;
+	}
+}

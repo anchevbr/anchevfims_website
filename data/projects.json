@@ -1,0 +1,53 @@
+[
+	{
+		"id": "anti-bullying",
+		"name": "Speak Up. Take Action.",
+		"client": "Anchev Films / Independent initiative",
+		"category": "Social Awareness Film",
+		"year": "2026",
+		"link": "https://www.youtube.com/watch?v=lINECZrijtg",
+		"thumbnail": "/media/projects/anti-bullying/cover.webp",
+		"video": "https://www.youtube.com/watch?v=lINECZrijtg",
+		"preview": "",
+		"behindFrame": "/media/projects/anti-bullying/behind-the-scenes.webp",
+		"behindVideo": "https://www.youtube.com/watch?v=_M3Mn_Nxba8",
+		"pressLink": "https://www.tovima.gr/2026/03/08/society/psisou-na-miliseis-mathites-bullying/",
+		"pressTitle": "TO VIMA / Students take a stand against bullying",
+		"location": "56th Junior High School of Athens, Greece",
+		"duration": "02:03",
+		"director": "George Stamou",
+		"producer": "Boris Anchev",
+		"dop": "George Papastergis",
+		"services": ["Production", "Cinematography", "Sound Recording & Sound Design", "Colour Grading"],
+		"deliverables": ["Anti-Bullying Awareness Film", "Behind-the-Scenes Film"],
+		"brief": "An independently funded film created to start a conversation about school bullying, made with the students of the 56th Junior High School of Athens. Producer Boris Anchev returned to his former school to make the studio's first production a project with a social purpose. Released around Greece's National Day Against School Violence and Bullying on 6 March, the film asks a direct question: what changes when the people who witness bullying choose to speak up?",
+		"approach": "Directed by George Stamou, the film uses repetition to reveal how everyday bullying becomes normalised. Five recurring situations move through the rhythms of school life, while classmates look on, laugh or remain silent. When the pattern breaks, an absence makes the consequences impossible to ignore. Rather than treating bullying as an isolated confrontation, the story turns its attention to the bystander and the choice between silence and support.",
+		"production": "The school's classrooms, corridors and courtyard became a working film set across four days of rehearsals and filming. First- and second-year students participated alongside the production team, bringing the message into the spaces they use every day. The project was funded by Boris Anchev and realised with the support of school principal Tasos Karabinis. The accompanying behind-the-scenes film documents the collaboration between the students and crew.",
+		"frames": [
+			"/media/projects/anti-bullying/photos59.webp",
+			"/media/projects/anti-bullying/photos23.webp",
+			"/media/projects/anti-bullying/photos00106.webp",
+			"/media/projects/anti-bullying/photos52.webp",
+			"/media/projects/anti-bullying/photos67.webp",
+			"/media/projects/anti-bullying/photos00065.webp"
+		],
+		"credits": [
+			{ "role": "Production Company", "name": "Anchev Films" },
+			{ "role": "Colourist", "name": "Foivos Petikas" },
+			{ "role": "Steadicam Operator", "name": "Foivos Mantalos" },
+			{ "role": "Steadicam Assistant", "name": "Vangelis Lyritzis" },
+			{ "role": "1st Assistant Camera", "name": "Stefanos Zervoulakos" },
+			{ "role": "Gaffer", "name": "George Lampropoulos" },
+			{ "role": "Sound Recording & Sound Design", "name": "Giannis Markopouliotis" },
+			{ "role": "Production Assistants", "name": "Randy Albarsini, Aristotelis Gkinis, Christoforos Kolios, Christos Paraschis, Orestis Spyrou" },
+			{ "role": "Cast", "name": "Panagiotis Georgiou, Amelia Zgkana, Konstantina Zgkana, Nikolaos Kioulafas, Stefani Kourti, Emmanouil Manouel, Danai Masiloungkan, Alexandros Mitsakis, Maria-Arsi Nteleon, Angelos Ogkitsi, Angela Pizaro, Seriona Potka, Amara Rantomes, Zanna Solkami, Ioanna Tripodi, Panagiota Tsoukala, Christina Ymer, Fiona Hasanai, Loukas Thaka" },
+			{ "role": "Equipment Support", "name": "DK Rental House" },
+			{ "role": "Behind-the-Scenes Photography", "name": "Stamatis Tripodis" },
+			{ "role": "Behind-the-Scenes Film", "name": "Giannis Papaioannou, Kyriakos Tsifakis" },
+			{ "role": "Participating School", "name": "56th Junior High School of Athens" },
+			{ "role": "School Principal", "name": "Tasos Karabinis" },
+			{ "role": "Special Thanks", "name": "Tasos Karabinis, Marilena Spiliotopoulou, City of Athens" }
+		],
+		"note": "An independent anti-bullying film, made with students, about the responsibility to speak up."
+	}
+]

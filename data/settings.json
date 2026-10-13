@@ -1,0 +1,15 @@
+{
+  "videoSource": "/media/hero-video.mp4",
+  "mobileVideoSource": "/media/hero-video-mobile.mp4",
+  "contact": {
+    "email": "ab@anchevfilms.com",
+    "phone": "+30 21 0444 5296",
+    "location": "Athens, Greece"
+  },
+  "social": [
+    {
+      "label": "Instagram",
+      "href": "https://www.instagram.com/anchev.films/"
+    }
+  ]
+}

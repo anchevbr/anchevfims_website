@@ -1,0 +1,52 @@
+# Search Visibility Follow-Up
+
+## Implemented
+
+- Four server-rendered service pages under `/services/`: video production in Athens, corporate video production, production services in Greece, and event filming/live streaming.
+- Substantive Greek equivalents under `/el/services/` and a Greek studio page at `/el/studio`.
+- Unique titles, descriptions and H1s, self-canonicals, language metadata, reciprocal English/Greek hreflang, structured data and sitemap entries.
+- Crawlable homepage, service, studio and case-study links. Production examples use existing work only; no corporate or live-event client results are invented.
+- Permanent trailing-slash redirects with query strings preserved. Private `/studio/` and `/api/` robots exclusions remain intact.
+- Verified main-film VideoObject upload date, duration, thumbnail and embed URL. Click-to-load playback remains unchanged for privacy. Schema does not guarantee video indexing.
+- Studio copy distinguishes the site's Anchev Studio name from the Hologram Studio Maps listing without asserting venue ownership.
+- RSS-backed podcast episode pages at `/podcast/:id` include feed descriptions, publication dates, native audio players, individual metadata and sitemap entries. Homepage episode titles link to them.
+- The last successful podcast feed is saved privately in `data/podcast-cache.json`. Cached content is served immediately while the feed refreshes in the background, keeping public pages available through RSS outages.
+- The anti-bullying case study includes the verified Greek film title as readable text and a schema alternate name.
+- Server dependencies are locked to patched compatible releases. `npm audit --omit=dev` reported zero known vulnerabilities after the update.
+
+## Release
+
+Published to `https://anchevfilms.com` on 10 October 2026. The live sitemap initially contained 13 public URLs, all passing the HTTP SEO acceptance checks. Live projects, clients, settings and uploads were preserved; a backup of the previous code and data was created before deployment.
+
+Desktop and mobile layouts were checked down to 320px for the Greek service and podcast content. Podcast pages remained available in an unavailable-feed test; cached HTML returned in 36 ms locally. This is a local response-time check, not a field Core Web Vitals measurement.
+
+## Local Verification
+
+Start `PORT=3011 npm run dev`, then run `npm run check:seo`.
+Use `CHECK_URL=http://localhost:3000 node scripts/check-seo.mjs` for another preview port.
+The check reads the live sitemap and verifies initial HTML, metadata, language pairs, JSON-LD, redirects and missing-page status.
+
+## Admin And Deployment Configuration
+
+Set `ADMIN_SECRET_HASH` to the SHA-256 hex digest of the admin password in the server's environment before starting Node or PM2. Admin access is denied when this variable is unset; no credential hash is stored in the repository. `npm run deploy` requires this variable in the remote non-interactive SSH environment before syncing files. Local `.env` files are ignored by Git and are not automatically loaded by the application.
+
+The oversized original `public/media/experience/anchev_studio_v1.mp4` is excluded from Git. The optimized studio videos remain included.
+
+## Account And Editorial Tasks
+
+1. After deployment, confirm `https://anchevfilms.com/sitemap.xml` in Search Console. Inspect every sitemap URL for indexed state, Google-selected canonical, last crawl and fetch status. A live test passing does not prove inclusion.
+2. Export 28-day and 90-day Performance data by query, page and country. Separate branded from non-branded searches and record clicks, impressions, CTR and average position. Do not treat the audit's public-search results as Google ranks.
+3. Review the new English and Greek copy before publication, especially live-production scope and venue arrangements. Confirm availability and technical requirements per enquiry.
+4. Supply approved projects with brief, production role, location, deliverables and cleared media. Do not turn client names into case studies without that evidence.
+5. Enrich the RSS-backed podcast pages with approved chapters or edited transcripts when available. Add original production/press stories with information beyond existing case studies. Link to publications; do not copy their articles.
+6. Request editorially appropriate links from TO VIMA and existing partner credits. Confirm the venue name and business-profile relationship with the responsible operator before editing Maps profiles.
+7. Inspect rendered film playback and Search Console's Video Indexing report; run Google's Rich Results Test on the deployed project page. The privacy-preserving player loads after a click, so video-result eligibility remains unverified. Add schema for other videos only with verified publication dates and media URLs.
+8. Obtain desktop/mobile PageSpeed or Lighthouse measurements and field Core Web Vitals before performance tuning. Use a location-capable SERP provider for regional rankings.
+
+## Partner Link Request
+
+Use this for existing editorial or partner relationships; review the wording before sending:
+
+> Hello, thank you for covering or crediting our production. Could you link the existing Anchev Films mention to the matching production page, https://anchevfilms.com/work/anti-bullying, so readers can find the film, production details and credits? For a general company credit, our website is https://anchevfilms.com/. Please use whichever destination best fits your page.
+
+These changes prepare pages for discovery, not guaranteed rankings. Authenticated Google checks and external outreach remain separate steps.

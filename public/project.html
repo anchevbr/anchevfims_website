@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- SEO:START -->
+    <title>Anchev Films | Selected Work</title>
+    <!-- SEO:END -->
+    <link rel="icon" type="image/png" href="/assets/anchevlogo.png" />
+    <link rel="apple-touch-icon" href="/assets/anchevlogo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,700&family=GFS+Didot&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles/main.css?v=20261010-search-release" />
+  </head>
+  <body>
+    <div id="project-page-root"></div>
+    <footer class="project-footer">
+      <a href="/#panel-cookies">Cookies Policy</a>
+      <button type="button" data-cookie-settings>Cookie Settings</button>
+    </footer>
+    <section class="consent-banner" id="consent-banner" role="dialog" aria-modal="false" aria-labelledby="consent-title" hidden>
+      <div>
+        <p class="consent-banner__eyebrow">Privacy choices</p>
+        <h2 id="consent-title" tabindex="-1">Choose how this site uses data.</h2>
+        <p class="consent-banner__copy">Optional analytics and advertising measurement help us understand visits and contact clicks. Nothing optional loads until you choose.</p>
+        <a class="consent-banner__policy" href="/#panel-cookies">Read Cookies Policy</a>
+      </div>
+      <div class="consent-banner__actions">
+        <button class="consent-button" type="button" data-consent-reject>Reject optional</button>
+        <button class="consent-button" type="button" data-consent-manage aria-expanded="false" aria-controls="consent-preferences">Manage</button>
+        <button class="consent-button consent-button--primary" type="button" data-consent-accept>Accept all</button>
+      </div>
+      <div class="consent-preferences" id="consent-preferences" hidden>
+        <label class="consent-preference">
+          <input id="consent-analytics" type="checkbox" />
+          <span><strong>Analytics</strong><span>Measure page use and email or telephone contact clicks through Google Analytics.</span></span>
+        </label>
+        <label class="consent-preference">
+          <input id="consent-advertising" type="checkbox" />
+          <span><strong>Advertising measurement</strong><span>Allow Google campaign measurement and contact-click signals without analytics cookies.</span></span>
+        </label>
+        <button class="consent-button consent-button--primary" type="button" data-consent-save>Save choices</button>
+      </div>
+    </section>
+    <script type="module">
+      import { setupAnalytics } from '/scripts/modules/analytics.js?v=20261006-ads-cookies';
+      import { setupProjectFilmPlayers } from '/scripts/modules/content-markup.js?v=20261010-project';
+      import { setupStudioVideo } from '/scripts/modules/experience.js?v=20261010-studio-page';
+      setupAnalytics();
+      setupProjectFilmPlayers(document.getElementById('project-page-root'));
+      setupStudioVideo();
+    </script>
+  </body>
+</html>
