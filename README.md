@@ -9,6 +9,8 @@ Use Node 24 LTS, npm, FFmpeg and FFprobe. Install dependencies with `npm ci`.
 - `npm run preview`: isolated local content copy with a test-only owner account. Never use this account or script in production.
 - `npm run dev`: normal local server using your environment and persistent data.
 - `npm test`: unit and integration tests with temporary databases.
+- `npm run test:browser`: isolated desktop/mobile Playwright and targeted axe checks; install Chromium with `npx playwright install chromium` first.
+- `npm run lint`: lint the new platform, admin and test modules.
 - `npm run check:seo`: HTTP SEO checks against `CHECK_URL` (default `http://localhost:3011`).
 
 The public app does not require a bundler. Security-sensitive processing and persistence are server-only.
@@ -37,4 +39,4 @@ Contact messages go to the real admin inbox, not an unconfigured email provider.
 
 ## Release Status
 
-This feature branch is under development and is not deployed. Do not use the legacy production deployment script for the database-backed release until the staged release and rollback procedure is validated. Production infrastructure changes require separate authorization.
+This feature branch is not deployed. See [PLATFORM.md](PLATFORM.md) for the audit, architecture decisions, CMS workflow, guarded preparation/activation procedure, evidence and remaining release blockers. Deployment preparation and activation require separate explicit approvals. Local backup and rollback tests do not replace a remote staging rehearsal. Production infrastructure changes require separate authorization.

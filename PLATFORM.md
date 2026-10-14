@@ -1,0 +1,54 @@
+# Platform Checkpoint
+
+This is a reviewable implementation checkpoint, not a production release or certification of the entire master brief. No production data, accounts, process, proxy or DNS were modified. Preserve the existing live site until staging and operator approvals are complete.
+
+## Audit And Decisions
+
+The starting application was an Express/vanilla SSR site with JSON persistence, a shared SHA-256 password, client-declared upload MIME types, and deletion that could unlink stored upload paths. The deploy script used in-place rsync deletion and process replacement. The original static media, URLs, case-study content and consent behavior remain valuable and are retained.
+
+| Risk | Implemented control | Evidence |
+| --- | --- | --- |
+| Shared credential / weak password storage | Named users, salted scrypt, server RBAC, MFA and recovery | Authentication and API tests |
+| Forged writes / stolen sessions | Same-origin CSRF, rotation, HttpOnly/Strict/Secure cookies, idle and absolute limits | Real HTTP login and token tests |
+| Active content disguised as an image | Private incoming files, byte inspection, Sharp/FFprobe validation, generated names, nosniff | Multipart rejection and media tests |
+| Project deletion removing shared files | Separate media ownership, usage checks, retained revisions, no asset deletion from project deletion | Database and media tests |
+| Fragile writes / leaked drafts | SQLite transactions, optimistic version checks, distinct published snapshots | Draft isolation and publishing tests |
+| Destructive in-place deployment | Explicit approvals, immutable release directories, offline backup, atomic pointer and rollback | Local operations tests; remote rehearsal pending |
+
+Keep Express and progressive enhancement rather than introduce a framework rewrite. SQLite is suitable for one small production office on one VPS: WAL, foreign keys, transactions and one worker. It is not a multi-host storage design. Flexible validated documents preserve legacy fields while translations, taxonomy, users, revisions, media, usage, jobs and inquiries have relational tables. No binaries are stored in SQLite.
+
+## CMS Workflow
+
+Open `/admin` and sign in with a named account. Owners manage accounts; administrators publish and manage settings; editors prepare drafts and media; viewers read. The dashboard reads real counts, job failures, health and activity.
+
+Save project drafts, preview privately, publish explicitly, restore revisions as drafts, duplicate, unpublish or archive. Stable identifiers preserve links. English stays at root; Greek projects appear under `/el/work/:id` only after a translation is reviewed and published. Unreviewed translations never receive a public Greek route or hreflang. Homepage/services/studio Greek copy still requires business editorial approval.
+
+Pages use validated text/image/video/link blocks and publish at `/pages/:id` or `/el/pages/:id`. A published `about` page also replaces the homepage About copy. A published `privacy` page overrides the corresponding privacy notice. Draft pages remain private. Project and page SEO overrides are rendered, and redirects are local, loop/chain restricted and preserve query strings.
+
+Media supports upload progress, selection, search, collections, alt text, rights, metadata, original preservation, deduplication and processing status. Images produce AVIF/WebP/JPEG variants; video produces H.264 web outputs, a silent preview and poster. References and revision history block deletion. Existing files are inventoried without removal; missing sources are reported. Original uploads and derivatives belong in persistent storage outside releases. Gallery and credit ordering currently use ordered fields, not a drag-and-drop rich editor.
+
+Inquiries are genuinely persisted and shown in the admin inbox. Reply links open the operator's mail client; no SMTP delivery is claimed. Default retention is 90 days and cleanup currently runs when the inbox is read. Review the legal basis, controller information, retention scheduler and privacy copy before release.
+
+## Staging And Release
+
+1. Obtain separate authorization for the host, storage layout, downtime window and first conversion. Provision Node 24, FFmpeg/FFprobe, PM2 and a trusted HTTPS reverse proxy. Use a non-root deploy user and firewall the loopback app port. None of this infrastructure setup has been executed by this branch.
+2. Create an approved release root with `releases/`, `current` pointing to a retained compatible release, and private `shared/data`, `shared/uploads`, `shared/backups` and `shared/.env`. The release tool intentionally refuses to turn a legacy directory into a symlink. Copy live JSON and uploads into staging, not the repository defaults; preserve existing public `/media` sources with code/media backups. The excluded large studio original remains outside Git and must be backed up separately.
+3. Configure HTTPS `SITE_URL`, distinct random session and MFA secrets, absolute shared storage paths, and proxy trust only where forwarding headers are overwritten. Restrict the environment file to the service account. Create the first owner privately, remove the bootstrap password and enroll MFA. Test real HTTPS cookie behavior on staging.
+4. Run `npm run migrate` on the staging copy twice. Review counts, checksums, duplicates, missing references and SQLite integrity. Check all existing production URLs against the copy. No automatic import should overwrite an already imported live database.
+5. Run `npm run lint`, `npm test`, `npm run test:browser`, `npm audit`, and `CHECK_URL=<staging URL> npm run check:seo`. Review screenshots, keyboard navigation, uploads/replacements, preview/public isolation, translations, inquiry handling and metadata. Browser tests automatically use an isolated loopback server, not `CHECK_URL` or production.
+6. To prepare committed code only, set `DEPLOY_ENV`, `DEPLOY_APPROVED=prepare-staging` (or separately approved production), `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, `DEPLOY_SSH_KEY`, and run `npm run deploy`. The command creates a new release directory, installs locked dependencies and links the existing private environment. It does not activate or migrate.
+7. On the approved server, load its private environment using Node's `--env-file` option and run `scripts/release.mjs activate <absolute root> <release id>` with matching `DEPLOY_ENV` and `RELEASE_APPROVED=activate-staging` or `activate-production`. This **stops the app briefly** for a consistent database/uploads backup, verifies checksums and database integrity, switches the symlink, restarts PM2, then checks database health and release identity. A failed candidate restores the retained compatible release. Zero downtime is not claimed.
+8. Rehearse `rollback` with `RELEASE_APPROVED=rollback-staging` and a retained release ID. Code rollback does not restore data or safely reverse a future incompatible schema migration. Restore data only offline after explicit incident approval: verify the backup, preserve the failed storage, copy database and uploads into new storage, point the environment at it and check integrity, accounts, projects and original checksums before resuming. Do not overwrite live storage blindly.
+
+Backups currently remain local and private with SHA-256 manifests. The operator must configure encrypted offsite copies, monitoring, schedules, retention and actual restore drills. Local tests verify backup readback/corruption detection and release pointer rollback, not PM2, SSH, production TLS or a real remote failure.
+
+## Verification Limits And Remaining Work
+
+- Local verification: 33 unit/integration tests pass, desktop/mobile browser workflows pass, scoped lint is clean, and `npm audit` reports zero vulnerabilities. The SEO gate checks the available homepage, Greek homepage, service/studio, project and podcast routes, including redirects and genuine 404 responses. GitHub CI execution remains unverified until the branch is pushed.
+- Automated browser tests cover desktop/mobile locale overflow, consent defaults, real inquiries, login, draft/publish, screenshots, and axe checks for admin login/dashboard, both homepages and privacy. These are not full WCAG certification or exhaustive public-page/manual assistive technology checks.
+- Local mobile Lighthouse baseline after corrections: performance 72, accessibility 100, best practices 100, SEO 100; LCP 6.1 seconds, CLS 0.004, TBT 20 ms. Performance remains below target. This is a laboratory baseline, not field Core Web Vitals, production performance or proof of rankings. Search Console, indexing, video eligibility and field metrics require live verification.
+- Full per-section CMS editing, page revision/preview controls, rich gallery ordering, translation of all fallback overlays, and comprehensive mobile Safari behavior remain follow-up work.
+- Local files remain the storage adapter; no S3/CDN, adaptive HLS, AV1, offsite service, SMTP or paid infrastructure was provisioned.
+- Media replacement retains previous originals privately, restores the prior public file on a failed database save, and protects revision references to derivative URLs. Tests inject a database failure and verify recovery. Abrupt process/disk failure between file and database updates still requires reconciliation; no fully atomic filesystem/database transaction or original-version restore UI is claimed.
+- CI is a checks-only workflow with read-only repository permissions and pinned actions. No automatic production deploy or provisioned staging environment is claimed. Secret scanning and security-review approvals must be configured at the repository/provider level.
+- The remote release CLI, first legacy-to-SQLite conversion and production restore have not been rehearsed on an authorized staging host. Do not deploy until those gates and content/legal approvals are completed.
