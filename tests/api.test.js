@@ -4,6 +4,7 @@ import express from 'express';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import * as OTPAuth from 'otpauth';
 import { ContentStore } from '../src/database.js';
 import { createUser, installAuthentication } from '../src/auth.js';
 import { installAdminApi } from '../src/admin-api.js';
@@ -13,12 +14,13 @@ let directory;
 let server;
 let origin;
 const password = 'test-only-long-password';
+const previousMfaKey = process.env.MFA_ENCRYPTION_KEY;
 const client = () => {
   let cookie = '';
   let csrf = '';
   return {
-    async request(route, method = 'GET', body, secure = true) {
-      const response = await fetch(`${origin}/api/admin${route}`, { method, headers: { cookie, 'content-type': 'application/json', ...(secure ? { origin, 'x-csrf-token': csrf } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    async request(route, method = 'GET', body, secure = true, headers = {}) {
+      const response = await fetch(`${origin}/api/admin${route}`, { method, headers: { cookie, 'content-type': 'application/json', ...(secure ? { origin, 'x-csrf-token': csrf } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
       const cookies = response.headers.getSetCookie();
       if (cookies.length) cookie = cookies.map((value) => value.split(';')[0]).join('; ');
       const data = await response.json();
@@ -30,11 +32,13 @@ const client = () => {
 };
 
 before(async () => {
+  process.env.MFA_ENCRYPTION_KEY = 'test-only-mfa-encryption-key-long-enough';
   directory = await mkdtemp(path.join(tmpdir(), 'anchev-api-'));
   store = new ContentStore(directory);
   await createUser(store, { email: 'owner@example.com', name: 'Owner', password, role: 'owner' });
   await createUser(store, { email: 'editor@example.com', name: 'Editor', password, role: 'editor' });
   await createUser(store, { email: 'viewer@example.com', name: 'Viewer', password, role: 'viewer' });
+  await createUser(store, { email: 'mfa@example.com', name: 'MFA owner', password, role: 'owner' });
   const app = express();
   app.use(express.json());
   installAuthentication(app, store);
@@ -44,7 +48,11 @@ before(async () => {
   await new Promise((resolve) => server.once('listening', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
 });
-after(async () => { await new Promise((resolve) => server.close(resolve)); store.close(); await rm(directory, { recursive: true, force: true }); });
+after(async () => {
+  await new Promise((resolve) => server.close(resolve)); store.close(); await rm(directory, { recursive: true, force: true });
+  if (previousMfaKey === undefined) delete process.env.MFA_ENCRYPTION_KEY;
+  else process.env.MFA_ENCRYPTION_KEY = previousMfaKey;
+});
 
 test('admin APIs reject anonymous requests and legacy shared-secret headers', async () => {
   const result = await client().request('/projects');
@@ -62,6 +70,8 @@ test('login regenerates sessions, sets HttpOnly cookies and requires CSRF', asyn
   const blocked = await browser.request('/projects', 'POST', { id: 'csrf-test', name: 'Must not save' }, false);
   assert.equal(blocked.response.status, 403);
   assert.equal(store.project('csrf-test'), null);
+  const malformed = await browser.request('/projects', 'POST', { id: 'csrf-test', name: 'Must not save' }, true, { 'x-csrf-token': 'é'.repeat(64) });
+  assert.equal(malformed.response.status, 403);
 });
 
 test('editors can save drafts but cannot publish, delete or change settings', async () => {
@@ -109,4 +119,41 @@ test('redirects refuse external destinations, privileged routes, chains and loop
   assert.equal((await browser.request('/redirects', 'POST', { source: '/admin', target: '/' })).response.status, 400);
   assert.equal((await browser.request('/redirects', 'POST', { source: '/old-film', target: '/work/film' })).response.status, 200);
   assert.equal((await browser.request('/redirects', 'POST', { source: '/work/film', target: '/old-film' })).response.status, 400);
+});
+
+test('MFA encrypts seeds, rejects replay and consumes recovery codes only once', async () => {
+  const browser = client();
+  await browser.login('mfa@example.com');
+  const setup = await browser.request('/mfa/setup', 'POST', { password });
+  assert.equal(setup.response.status, 200);
+  const generator = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(setup.data.secret), period: 30, digits: 6 });
+  const token = generator.generate();
+  const confirmed = await browser.request('/mfa/confirm', 'POST', { token });
+  assert.equal(confirmed.response.status, 200);
+  const user = store.db.prepare('SELECT * FROM users WHERE email=?').get('mfa@example.com');
+  assert.notEqual(user.mfa_secret, setup.data.secret);
+  assert.equal(user.mfa_recovery.includes(confirmed.data.recoveryCodes[0]), false);
+  await browser.request('/logout', 'POST');
+  const replay = client();
+  await replay.request('/session');
+  assert.equal((await replay.request('/login', 'POST', { email: 'mfa@example.com', password, token })).response.status, 401);
+  const recovered = client();
+  await recovered.request('/session');
+  assert.equal((await recovered.request('/login', 'POST', { email: 'mfa@example.com', password, token: confirmed.data.recoveryCodes[0] })).response.status, 200);
+  const reused = client();
+  await reused.request('/session');
+  assert.equal((await reused.request('/login', 'POST', { email: 'mfa@example.com', password, token: confirmed.data.recoveryCodes[0] })).response.status, 401);
+  assert.equal((await recovered.request('/mfa/disable', 'POST', { password, token: confirmed.data.recoveryCodes[1] })).response.status, 200);
+  assert.equal(store.db.prepare('SELECT mfa_secret FROM users WHERE id=?').get(user.id).mfa_secret, null);
+});
+
+test('activity records are readable and pagination advances safely', async () => {
+  const browser = client();
+  await browser.login('owner@example.com');
+  const first = await browser.request('/activity');
+  assert.equal(first.response.status, 200);
+  assert.ok(first.data.activity.length);
+  const next = await browser.request('/activity?offset=1');
+  assert.equal(next.response.status, 200);
+  assert.notEqual(next.data.activity[0].id, first.data.activity[0].id);
 });

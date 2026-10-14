@@ -2,8 +2,8 @@ import express from 'express';
 import multer from 'multer';
 import sharp from 'sharp';
 import crypto from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { mkdir, rename, rm, stat, readFile } from 'node:fs/promises';
+import { createReadStream, constants } from 'node:fs';
+import { mkdir, rename, rm, stat, copyFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -75,9 +75,17 @@ export class MediaService {
       await mkdir(directory, { recursive: true });
       const filename = replacement ? this.filename(replacement) : path.join(directory, `original.${type.ext}`);
       const bytes = (await stat(file.path)).size;
+      let archive;
+      if (replacement) {
+        const history = path.join(this.store.directory, 'media-history', id);
+        await mkdir(history, { recursive: true, mode: 0o700 });
+        archive = path.join(history, `${crypto.randomUUID()}.${type.ext}`);
+        await copyFile(filename, archive, constants.COPYFILE_EXCL);
+        await writeFile(`${archive}.json`, JSON.stringify({ assetId: id, originalUrl: replacement.url, previousChecksum: replacement.checksum, nextChecksum: digest, actorId, createdAt: timestamp() }), { mode: 0o600, flag: 'wx' });
+      }
       await rename(file.path, filename);
       const url = replacement?.url || `/uploads/${id}/original.${type.ext}`;
-      this.store.db.transaction(() => {
+      try { this.store.db.transaction(() => {
         if (replacement) {
           this.store.db.prepare("UPDATE media SET bytes=?,checksum=?,width=?,height=?,duration=?,status='queued',error=NULL,updated_at=? WHERE id=?").run(bytes, digest, details.width, details.height, details.duration, timestamp(), id);
         } else {
@@ -86,7 +94,14 @@ export class MediaService {
         }
         this.store.db.prepare("INSERT INTO jobs(media_id,status,updated_at) VALUES (?,'queued',?) ON CONFLICT(media_id) DO UPDATE SET status='queued',attempts=0,error=NULL,updated_at=excluded.updated_at").run(id, timestamp());
         this.store.audit(actorId, replacement ? 'media.replace' : 'media.upload', 'media', id, { mime: type.mime, bytes });
-      })();
+      })(); } catch (error) {
+        if (archive) {
+          const restored = `${filename}.${crypto.randomUUID()}.restore`;
+          await copyFile(archive, restored, constants.COPYFILE_EXCL);
+          await rename(restored, filename);
+        } else await rm(filename, { force: true });
+        throw error;
+      }
       return { asset: this.store.media(id), duplicate: false };
     } catch (error) {
       await rm(file.path, { force: true }).catch(() => {});
@@ -216,7 +231,8 @@ export class MediaService {
       const asset = this.store.media(req.params.id);
       if (!asset) return res.status(404).json({ error: 'Media not found.' });
       const revisions = this.store.db.prepare('SELECT document FROM revisions').all();
-      if (asset.usage.length || revisions.some((revision) => revision.document.includes(asset.url)) || ['processing', 'queued'].includes(asset.status)) return res.status(409).json({ error: 'This media is referenced by content or revisions, or is still processing.' });
+      const urls = [asset.url, ...asset.derivatives.map((entry) => entry.url)];
+      if (asset.usage.length || revisions.some((revision) => urls.some((url) => revision.document.includes(url))) || ['processing', 'queued'].includes(asset.status)) return res.status(409).json({ error: 'This media is referenced by content or revisions, or is still processing.' });
       const original = this.filename(asset);
       await rm(original, { force: true });
       for (const derivative of asset.derivatives) await rm(this.filename({ url: derivative.url }), { force: true });
@@ -234,12 +250,13 @@ export class MediaService {
 export const inventoryMedia = async (store, publicDir, uploadsDir) => {
   const { readdir } = await import('node:fs/promises');
   const references = new Set();
-  const visit = (value) => {
-    if (typeof value === 'string' && /^(?:\/media\/|\/uploads\/|https?:\/\/)/.test(value)) references.add(value);
-    else if (Array.isArray(value)) value.forEach(visit);
-    else if (value && typeof value === 'object') Object.values(value).forEach(visit);
+  const fields = new Set(['thumbnail','video','preview','behindFrame','behindVideo','frames','videoSource','mobileVideoSource','showreelSource','image']);
+  const visit = (value, field = '') => {
+    if (typeof value === 'string' && fields.has(field) && /^(?:\/media\/|\/uploads\/|https?:\/\/)/.test(value)) references.add(value);
+    else if (Array.isArray(value)) value.forEach((entry) => visit(entry, field));
+    else if (value && typeof value === 'object') Object.entries(value).forEach(([key, entry]) => visit(entry, key));
   };
-  store.projects().forEach(visit);
+  store.projects().forEach((project) => visit(project));
   visit(store.settings());
   const walk = async (directory, prefix) => {
     const entries = await readdir(directory, { withFileTypes: true }).catch((error) => error.code === 'ENOENT' ? [] : Promise.reject(error));
@@ -261,12 +278,13 @@ export const inventoryMedia = async (store, publicDir, uploadsDir) => {
     const digest = info?.isFile() ? await checksum(filename) : null;
     const duplicate = digest ? store.db.prepare('SELECT url FROM media WHERE checksum=?').get(digest) : null;
     const type = info ? await inspectUpload(filename).catch(() => null) : null;
+    const dimensions = type?.mime.startsWith('image/') ? await sharp(filename, { limitInputPixels: 40000000 }).metadata().catch(() => null) : null;
     const status = !local ? 'external' : info ? 'ready' : 'missing';
     if (status === 'missing') report.missing.push(url);
     if (duplicate) report.duplicates.push({ url, original: duplicate.url });
     const id = crypto.randomUUID();
-    store.db.prepare('INSERT INTO media(id,url,filename,mime,bytes,checksum,status,metadata,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(id, url, path.basename(url), type?.mime || 'application/octet-stream', info?.size || 0, duplicate ? null : digest, status, JSON.stringify(metadataSchema.parse({})), timestamp(), timestamp());
+    store.db.prepare('INSERT INTO media(id,url,filename,mime,bytes,checksum,width,height,status,metadata,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, url, path.basename(url), type?.mime || 'application/octet-stream', info?.size || 0, duplicate ? null : digest, dimensions?.width || null, dimensions?.height || null, status, JSON.stringify(metadataSchema.parse({})), timestamp(), timestamp());
     report.files.push({ url, bytes: info?.size || 0, checksum: digest, status });
     report.added++;
   }

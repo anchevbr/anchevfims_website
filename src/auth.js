@@ -93,6 +93,8 @@ export const installAuthentication = (app, store) => {
   };
   const totp = (user, value) => new OTPAuth.TOTP({ issuer: 'Anchev Films', label: user.email, algorithm: 'SHA1', digits: 6, period: 30, secret: OTPAuth.Secret.fromBase32(value) });
   const verifyMfa = (user, token) => {
+    user = user && store.db.prepare('SELECT * FROM users WHERE id=? AND active=1').get(user.id);
+    if (!user) return false;
     if (!user.mfa_secret) return true;
     try {
       const delta = totp(user, decrypt(user.mfa_secret)).validate({ token: String(token || ''), window: 1 });
@@ -124,7 +126,7 @@ export const installAuthentication = (app, store) => {
       let sameOrigin = false;
       try { sameOrigin = Boolean(origin && new URL(origin).origin === `${req.protocol}://${req.get('host')}`); } catch {}
       const supplied = req.get('x-csrf-token') || '';
-      if (!sameOrigin || supplied.length !== req.session.csrf.length || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(req.session.csrf))) {
+      if (!sameOrigin || !/^[a-f0-9]{64}$/.test(supplied) || !crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(req.session.csrf))) {
         return res.status(403).json({ error: 'Your security token expired. Reload and try again.' });
       }
     }
@@ -165,10 +167,11 @@ export const installAuthentication = (app, store) => {
     res.json({ secret: value, uri: totp(req.user, value).toString() });
   }));
   router.post('/mfa/confirm', asyncRoute(async (req, res) => {
-    if (!req.session.pendingMfa || totp(req.user, decrypt(req.session.pendingMfa)).validate({ token: String(req.body.token || ''), window: 1 }) === null) return res.status(400).json({ error: 'Verification code is incorrect.' });
+    const delta = req.session.pendingMfa ? totp(req.user, decrypt(req.session.pendingMfa)).validate({ token: String(req.body.token || ''), window: 1 }) : null;
+    if (delta === null) return res.status(400).json({ error: 'Verification code is incorrect.' });
     const codes = Array.from({ length: 8 }, () => crypto.randomBytes(10).toString('hex'));
     store.db.prepare('UPDATE users SET mfa_secret=?,mfa_recovery=?,mfa_last_step=? WHERE id=?')
-      .run(req.session.pendingMfa, JSON.stringify(codes.map((code) => crypto.createHash('sha256').update(code).digest('hex'))), Math.floor(Date.now() / 30000), req.user.id);
+      .run(req.session.pendingMfa, JSON.stringify(codes.map((code) => crypto.createHash('sha256').update(code).digest('hex'))), Math.floor(Date.now() / 30000) + delta, req.user.id);
     delete req.session.pendingMfa;
     store.audit(req.user.id, 'auth.mfa.enable', 'user', req.user.id);
     res.json({ recoveryCodes: codes });

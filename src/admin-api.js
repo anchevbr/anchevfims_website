@@ -204,7 +204,7 @@ export const installAdminApi = (app, store) => {
     store.audit(req.user.id, 'user.update', 'user', current.id);
     res.json({ user: publicUser(store.db.prepare('SELECT * FROM users WHERE id=?').get(current.id)) });
   }));
-  router.get('/activity', (_req, res) => {
+  router.get('/activity', (req, res) => {
     const offset = Math.max(0, Math.min(1000000, Number(req.query.offset) || 0));
     res.json({ activity: store.db.prepare('SELECT audit.*,users.name AS actor FROM audit LEFT JOIN users ON users.id=audit.actor_id ORDER BY audit.id DESC LIMIT 50 OFFSET ?').all(offset).map((entry) => ({ ...entry, details: JSON.parse(entry.details) })) });
   });
