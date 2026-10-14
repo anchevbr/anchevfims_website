@@ -2,9 +2,15 @@ import express from 'express';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import multer from 'multer';
 import crypto from 'crypto';
 import { XMLParser } from 'fast-xml-parser';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
+import { z, ZodError } from 'zod';
+import { ContentStore } from './src/database.js';
+import { installAuthentication } from './src/auth.js';
+import { installAdminApi } from './src/admin-api.js';
+import { MediaService } from './src/media.js';
 import {
   renderAboutPageMarkup,
   renderArticlesMarkup,
@@ -22,10 +28,13 @@ import { servicePages, getServicePage, getServicePath, getLanguageAlternates, re
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, 'public');
-const uploadsDir = path.join(publicDir, 'uploads');
-const dataDir = path.join(__dirname, 'data');
+const uploadsDir = path.resolve(process.env.UPLOADS_DIR || path.join(publicDir, 'uploads'));
+const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
+const store = new ContentStore(dataDir);
+store.importJson();
+const media = new MediaService(store, uploadsDir);
 const indexFile = path.join(publicDir, 'index.html');
 const projectTemplateFile = path.join(publicDir, 'project.html');
 const projectsFile = path.join(dataDir, 'projects.json');
@@ -48,23 +57,6 @@ const SERVICE_CATALOG = [
   'Post-Production',
   'Delivery & Versions'
 ];
-// SHA-256 hash of the admin password — never store the plaintext password here
-const ADMIN_SECRET_HASH = process.env.ADMIN_SECRET_HASH;
-
-const hashSecret = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
-
-const isValidSecret = (provided) => {
-  if (!provided || !ADMIN_SECRET_HASH) return false;
-  try {
-    const a = Buffer.from(hashSecret(provided), 'hex');
-    const b = Buffer.from(ADMIN_SECRET_HASH, 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-};
-
 const DEFAULT_SETTINGS = {
   videoSource: '/media/hero-video.mp4',
   mobileVideoSource: '/media/hero-video-mobile.mp4',
@@ -75,121 +67,11 @@ const DEFAULT_SETTINGS = {
   ]
 };
 
-const ALLOWED_MIME = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
-  'video/mp4', 'video/webm', 'video/quicktime'
-]);
-const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
-
-const storage = multer.diskStorage({
-  destination: async (_req, _file, cb) => {
-    await fs.mkdir(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-    const rand = crypto.randomBytes(8).toString('hex');
-    cb(null, `${rand}${ext}`);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not allowed'));
-    }
-  }
-});
-
-const readProjects = async () => {
-  const raw = await fs.readFile(projectsFile, 'utf8');
-  return JSON.parse(raw);
-};
-
-const writeProjects = async (projects) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(projectsFile, `${JSON.stringify(projects, null, 2)}\n`, 'utf8');
-};
-
-const readClients = async () => {
-  try {
-    const raw = await fs.readFile(clientsFile, 'utf8');
-    return JSON.parse(raw);
-  } catch (_err) {
-    return [];
-  }
-};
-
-const writeClients = async (clients) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(clientsFile, `${JSON.stringify(clients, null, 2)}\n`, 'utf8');
-};
-
-const readArticles = async () => {
-  try {
-    const raw = await fs.readFile(articlesFile, 'utf8');
-    return JSON.parse(raw);
-  } catch (_err) {
-    return [];
-  }
-};
-
-const writeArticles = async (articles) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(articlesFile, `${JSON.stringify(articles, null, 2)}\n`, 'utf8');
-};
-
-const readSettings = async () => {
-  try {
-    const raw = await fs.readFile(settingsFile, 'utf8');
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch (_err) {
-    return { ...DEFAULT_SETTINGS };
-  }
-};
-
-const writeSettings = async (settings) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(settingsFile, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-};
-
-const sanitizeText = (value) => String(value || '').trim();
-
-const sanitizeExternalUrl = (value) => {
-  try {
-    const url = new URL(sanitizeText(value));
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
-  } catch (_error) {
-    return '';
-  }
-};
-
-const sanitizeTextList = (value) => (Array.isArray(value)
-  ? value
-    .map((entry) => sanitizeText(entry))
-    .filter(Boolean)
-  : []);
-
-const sanitizeArticle = (input) => {
-  const rawId = sanitizeText(input.id)
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  const rawDate = sanitizeText(input.publishedAt);
-  return {
-    id: rawId || `article-${crypto.randomUUID()}`,
-    title: sanitizeText(input.title),
-    publisher: sanitizeText(input.publisher),
-    publishedAt: /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : '',
-    url: sanitizeExternalUrl(input.url),
-    summary: sanitizeText(input.summary),
-    language: ['el', 'en'].includes(input.language) ? input.language : 'en'
-  };
-};
+store.setSettings({ ...DEFAULT_SETTINGS, ...store.settings() });
+const readProjects = async () => store.projects({ publicOnly: true });
+const readClients = async () => store.clients();
+const readArticles = async () => store.articles();
+const readSettings = async () => ({ ...DEFAULT_SETTINGS, ...store.settings() });
 
 const podcastFeedParser = new XMLParser({
   ignoreAttributes: false,
@@ -1009,60 +891,49 @@ const renderSeoPage = async (req, res) => {
       ? injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(seo.renderData.project, seo.renderData.projects, seo.description))
       : renderDynamicContent(template, seo.renderData);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(seo.status || 200).type('html').send(renderedTemplate.replace(SEO_BLOCK, seoMarkup).replace('<html lang="en">', `<html lang="${seo.language || 'en'}">`));
+    res.status(seo.status || 200).type('html').send(renderedTemplate.replace(SEO_BLOCK, seoMarkup).replace('<html lang="en">', `<html lang="${seo.language || 'en'}">`).replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (_error) {
     res.status(500).send('Unable to render this page.');
   }
 };
 
-const sanitizeProject = (input) => ({
-  id: sanitizeText(input.id)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, ''),
-  name: sanitizeText(input.name),
-  client: sanitizeText(input.client),
-  category: sanitizeText(input.category),
-  year: sanitizeText(input.year),
-  link: sanitizeText(input.link),
-  thumbnail: sanitizeText(input.thumbnail),
-  video: sanitizeText(input.video),
-  preview: sanitizeText(input.preview),
-  behindFrame: sanitizeText(input.behindFrame),
-  behindVideo: sanitizeText(input.behindVideo),
-  pressLink: sanitizeText(input.pressLink),
-  pressTitle: sanitizeText(input.pressTitle),
-  location: sanitizeText(input.location),
-  duration: sanitizeText(input.duration),
-  director: sanitizeText(input.director),
-  producer: sanitizeText(input.producer),
-  dop: sanitizeText(input.dop),
-  services: sanitizeTextList(input.services),
-  deliverables: sanitizeTextList(input.deliverables),
-  brief: sanitizeText(input.brief),
-  approach: sanitizeText(input.approach),
-  production: sanitizeText(input.production),
-  frames: sanitizeTextList(input.frames),
-  credits: Array.isArray(input.credits)
-    ? input.credits
-        .filter((c) => c && typeof c.role === 'string' && typeof c.name === 'string')
-        .map((c) => ({ role: String(c.role).trim(), name: String(c.name).trim() }))
-        .filter((c) => c.role || c.name)
-    : [],
-  note: sanitizeText(input.note)
-});
-
-const requireAdmin = (req, res, next) => {
-  if (!isValidSecret(req.header('x-admin-secret'))) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  next();
-};
-
 app.disable('x-powered-by');
-app.use(express.json());
+if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+app.use((_req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(18).toString('base64');
+  next();
+});
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", (_req, res) => `'nonce-${res.locals.nonce}'`, 'https://www.googletagmanager.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'https:', 'data:'],
+      mediaSrc: ["'self'", 'https:'],
+      connectSrc: ["'self'", 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.google.com', 'https://*.doubleclick.net'],
+      frameSrc: ['https://www.youtube-nocookie.com', 'https://www.youtube.com', 'https://player.vimeo.com'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  strictTransportSecurity: process.env.NODE_ENV === 'production' ? undefined : false
+}));
+app.use('/api/admin', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+app.use('/api/admin', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use(express.json({ limit: '256kb' }));
+installAuthentication(app, store);
+installAdminApi(app, store);
+media.install(app);
+if (process.env.MEDIA_WORKER !== '0') media.start();
 const servePublicFiles = express.static(publicDir, {
   extensions: ['html'],
   index: false,
@@ -1077,21 +948,8 @@ const servePublicFiles = express.static(publicDir, {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true });
-});
-
-app.get('/api/admin/verify', requireAdmin, (_req, res) => {
-  res.json({ ok: true });
-});
-
-app.post('/api/admin/upload', requireAdmin, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    res.status(400).json({ error: 'No file received' });
-    return;
-  }
-  res.json({ url: `/uploads/${req.file.filename}` });
-}, (err, _req, res, _next) => {
-  res.status(400).json({ error: err.message || 'Upload failed' });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: Boolean(store.db.prepare('SELECT 1 AS ok').get().ok), release: process.env.RELEASE_VERSION || 'development' });
 });
 
 app.get('/api/projects', async (_req, res) => {
@@ -1131,23 +989,6 @@ app.get('/api/podcast', async (_req, res) => {
   }
 });
 
-app.post('/api/admin/clients', requireAdmin, async (req, res) => {
-  try {
-    const raw = req.body.clients;
-    if (!Array.isArray(raw)) {
-      res.status(400).json({ error: 'clients must be an array' });
-      return;
-    }
-    const clients = raw
-      .map((c) => String(c || '').trim().toUpperCase())
-      .filter(Boolean);
-    await writeClients(clients);
-    res.json({ clients });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save clients' });
-  }
-});
-
 app.get('/api/settings', async (_req, res) => {
   try {
     res.json(await readSettings());
@@ -1156,129 +997,22 @@ app.get('/api/settings', async (_req, res) => {
   }
 });
 
-app.post('/api/admin/settings', requireAdmin, async (req, res) => {
-  try {
-    const { videoSource, mobileVideoSource, showreelSource, contact, social } = req.body;
-    const settings = {
-      videoSource: String(videoSource || '').trim(),
-      mobileVideoSource: String(mobileVideoSource || '').trim(),
-      showreelSource: String(showreelSource || '').trim(),
-      contact: {
-        email: String(contact?.email || '').trim(),
-        phone: String(contact?.phone || '').trim(),
-        location: String(contact?.location || '').trim()
-      },
-      social: Array.isArray(social)
-        ? social
-            .map((s) => ({ label: String(s.label || '').trim(), href: String(s.href || '').trim() }))
-            .filter((s) => s.label && s.href)
-        : []
-    };
-    await writeSettings(settings);
-    res.json(settings);
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save settings' });
-  }
+const inquirySchema = z.object({
+  name: z.string().trim().min(2).max(120), email: z.email().max(254), company: z.string().trim().max(200).default(''),
+  message: z.string().trim().min(20).max(5000), locale: z.enum(['en', 'el']).default('en'), privacy: z.literal(true),
+  website: z.string().max(100).default('')
 });
-
-app.post('/api/admin/articles', requireAdmin, async (req, res) => {
+app.post('/api/contact', rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false }), (req, res, next) => {
   try {
-    const article = sanitizeArticle(req.body);
-    if (!article.title || !article.url) {
-      res.status(400).json({ error: 'title and a valid URL are required' });
-      return;
-    }
-
-    const articles = await readArticles();
-    const existingIndex = articles.findIndex((entry) => entry.id === article.id);
-    if (existingIndex >= 0) {
-      articles[existingIndex] = article;
-    } else {
-      articles.unshift(article);
-    }
-    articles.sort((first, second) => String(second.publishedAt).localeCompare(String(first.publishedAt)));
-
-    await writeArticles(articles);
-    res.json({ articles, saved: article });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save article' });
-  }
+    const inquiry = inquirySchema.parse(req.body);
+    if (inquiry.website) return res.status(202).json({ ok: true });
+    const id = crypto.randomUUID();
+    store.db.prepare('INSERT INTO inquiries(id,name,email,company,message,locale,created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(id, inquiry.name, inquiry.email, inquiry.company, inquiry.message, inquiry.locale, new Date().toISOString());
+    res.status(201).json({ ok: true, reference: id });
+  } catch (error) { next(error); }
 });
-
-app.delete('/api/admin/articles/:id', requireAdmin, async (req, res) => {
-  try {
-    const articleId = sanitizeText(req.params.id).toLowerCase();
-    const articles = await readArticles();
-    if (!articles.some((entry) => entry.id === articleId)) {
-      res.status(404).json({ error: 'Article not found' });
-      return;
-    }
-
-    const nextArticles = articles.filter((entry) => entry.id !== articleId);
-    await writeArticles(nextArticles);
-    res.json({ articles: nextArticles, deleted: articleId });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to delete article' });
-  }
-});
-
-app.post('/api/admin/projects', requireAdmin, async (req, res) => {
-  try {
-    const project = sanitizeProject(req.body);
-    if (!project.id || !project.name) {
-      res.status(400).json({ error: 'id and name are required' });
-      return;
-    }
-
-    const projects = await readProjects();
-    const existingIndex = projects.findIndex((entry) => entry.id === project.id);
-
-    if (existingIndex >= 0) {
-      projects[existingIndex] = project;
-    } else {
-      projects.unshift(project);
-    }
-
-    await writeProjects(projects);
-    res.json({ projects, saved: project });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save project' });
-  }
-});
-
-app.delete('/api/admin/projects/:id', requireAdmin, async (req, res) => {
-  try {
-    const projectId = String(req.params.id || '').trim().toLowerCase();
-    const projects = await readProjects();
-    const target = projects.find((entry) => entry.id === projectId);
-
-    if (!target) {
-      res.status(404).json({ error: 'Project not found' });
-      return;
-    }
-
-    const mediaFiles = [
-      target.thumbnail,
-      target.video,
-      target.preview,
-      target.behindFrame,
-      ...(Array.isArray(target.frames) ? target.frames : [])
-    ];
-    for (const filePath of new Set(mediaFiles)) {
-      if (filePath && filePath.startsWith('/uploads/')) {
-        const absPath = path.join(publicDir, filePath);
-        await fs.unlink(absPath).catch(() => {});
-      }
-    }
-
-    const nextProjects = projects.filter((entry) => entry.id !== projectId);
-    await writeProjects(nextProjects);
-    res.json({ projects: nextProjects, deleted: projectId });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to delete project' });
-  }
-});
-
+app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }));
 app.get('/robots.txt', (req, res) => {
   const origin = getSiteOrigin(req);
   res.setHeader('Cache-Control', 'no-store');
@@ -1286,6 +1020,7 @@ app.get('/robots.txt', (req, res) => {
     'User-agent: *',
     'Allow: /',
     'Disallow: /studio/',
+    'Disallow: /admin',
     'Disallow: /api/',
     `Sitemap: ${origin}/sitemap.xml`
   ].join('\n'));
@@ -1352,10 +1087,28 @@ app.get(/^\/podcast\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slic
 app.get(/^\/(?:el\/)?(?:services\/[^/]+|studio)\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
 app.get(['/', '/index.html', '/work/:id', '/studio', '/services/:slug', '/el/services/:slug', '/el/studio'], renderSeoPage);
 app.get(['/project', '/project.html'], (_req, res) => res.redirect(301, '/'));
+app.use('/uploads', express.static(uploadsDir, { dotfiles: 'deny', fallthrough: false, maxAge: 0 }));
 app.use(servePublicFiles);
 
 app.get('*', renderSeoPage);
 
-app.listen(port, () => {
-  console.log(`Anchev Films is running at http://localhost:${port}`);
+app.use((error, _req, res, _next) => {
+  if (res.headersSent) return _next(error);
+  const status = error instanceof ZodError ? 400 : error.code === 'LIMIT_FILE_SIZE' ? 413 : error.code?.startsWith('SQLITE_CONSTRAINT') ? 409 : error.status || 500;
+  const requestId = crypto.randomUUID();
+  if (status >= 500) console.error(JSON.stringify({ event: 'request.error', requestId, code: error.code || error.name }));
+  const message = error instanceof ZodError ? error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') : status === 413 ? 'File or request is too large.' : status === 409 ? error.code ? 'This record conflicts with an existing entry.' : error.message : status < 500 ? error.message : 'The request could not be completed.';
+  res.status(status).json({ error: message, requestId });
 });
+
+const listener = app.listen(port, process.env.HOST || '127.0.0.1', () => {
+  const actualPort = listener.address().port;
+  console.log(`Anchev Films is running at http://localhost:${actualPort}`);
+  process.send?.({ port: actualPort });
+});
+const shutdown = async () => {
+  await media.stop();
+  listener.close(() => { store.close(); process.exit(0); });
+};
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

@@ -4,15 +4,36 @@
   "private": true,
   "description": "Premium cinematic landing page for a video production company",
   "type": "module",
+  "engines": { "node": ">=24.0.0 <25" },
   "scripts": {
-    "dev": "node server.js",
-    "start": "NODE_ENV=production node server.js",
+    "dev": "node --env-file-if-exists=.env server.js",
+    "start": "NODE_ENV=production node --env-file-if-exists=.env server.js",
+    "preview": "node scripts/preview.mjs",
+    "test": "node --test tests/*.test.js",
+    "admin:create": "node --env-file-if-exists=.env scripts/create-admin.mjs",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "check:seo": "node scripts/check-seo.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "express": "^4.22.3",
+    "express-rate-limit": "^8.7.1",
+    "express-session": "^1.19.0",
     "fast-xml-parser": "^5.11.2",
-    "multer": "^2.4.0"
+    "file-type": "^22.1.1",
+    "helmet": "^8.3.0",
+    "lucide": "^1.56.0",
+    "multer": "^2.4.0",
+    "otpauth": "^9.5.2",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
+    "eslint": "^10.12.0",
+    "lighthouse": "^13.5.0"
   }
 }
