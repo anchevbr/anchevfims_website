@@ -1,5 +1,6 @@
 import { siteContent } from '/scripts/content.js';
-import { safeSocialProfileUrl } from '/scripts/modules/content-markup.js';
+import { safeSocialProfileUrl, renderContactPageMarkup } from '/scripts/modules/content-markup.js';
+import { copy, locale } from '/scripts/modules/localization.js';
 
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character) => ({
   '&': '&amp;',
@@ -53,27 +54,27 @@ export const renderContact = () => {
     </div>
   `;
 
-  if (contactRoot) contactRoot.innerHTML = `
-    <div class="contact-final">
-      <div>
-        <p class="contact-final__eyebrow">Start a project / Athens to worldwide</p>
-        <h2 class="contact-final__title">Have something<br>in mind?<br><em>Let's make it.</em></h2>
-      </div>
-      <div class="contact-final__details">
-        <div>
-          <p class="contact-final__meta">Email</p>
-          <a href="mailto:${escapeHtml(email)}" data-film-cursor data-cursor-kind="contact" data-cursor-label="Let's Talk">${escapeHtml(email)}</a>
-        </div>
-        <div>
-          <p class="contact-final__meta">Telephone</p>
-          <a href="tel:${escapeHtml(phone.replace(/\s+/g, ''))}">${escapeHtml(phone)}</a>
-        </div>
-        <div>
-          <p class="contact-final__meta">Available worldwide</p>
-          <strong>${escapeHtml(location)}</strong>
-        </div>
-        <div class="contact-final__socials">${socialLinks}</div>
-      </div>
-    </div>
-  `;
+  if (contactRoot && !contactRoot.childElementCount) contactRoot.innerHTML = renderContactPageMarkup({ ...siteContent.contact, social }, locale());
+  const form = document.getElementById('inquiry-form');
+  if (!form || form.dataset.bound) return;
+  form.dataset.bound = 'true';
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const words = copy();
+    const submit = form.querySelector('[type="submit"]');
+    const status = document.getElementById('inquiry-status');
+    submit.disabled = true;
+    submit.textContent = words.sending;
+    status.textContent = '';
+    try {
+      const values = Object.fromEntries(new FormData(form));
+      const response = await fetch('/api/contact', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...values, privacy: form.elements.privacy.checked, locale: locale() }) });
+      if (!response.ok) throw new Error(words.error);
+      status.textContent = words.success;
+      form.reset();
+      window.dispatchEvent(new CustomEvent('anchev:inquiry-received'));
+    } catch {
+      status.textContent = words.error;
+    } finally { submit.disabled = false; submit.textContent = words.send; }
+  });
 };

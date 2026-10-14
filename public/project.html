@@ -50,7 +50,9 @@
       import { setupAnalytics } from '/scripts/modules/analytics.js?v=20261006-ads-cookies';
       import { setupProjectFilmPlayers } from '/scripts/modules/content-markup.js?v=20261010-project';
       import { setupStudioVideo } from '/scripts/modules/experience.js?v=20261010-studio-page';
+      import { setupLanguagePreference } from '/scripts/modules/language.js';
       setupAnalytics();
+      setupLanguagePreference();
       setupProjectFilmPlayers(document.getElementById('project-page-root'));
       setupStudioVideo();
     </script>

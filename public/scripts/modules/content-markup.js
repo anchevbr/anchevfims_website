@@ -1,3 +1,5 @@
+import { copy } from './localization.js';
+
 export const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character) => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -56,7 +58,7 @@ export const renderProjectCardMarkup = (project, index) => {
   const fallback = project.isShowreelFeature ? ' data-fallback="true"' : '';
   const poster = thumbnail ? ` poster="${escapeHtml(thumbnail)}"` : '';
   const cardMedia = video
-    ? `<video data-project-preview src="${escapeHtml(video)}" muted loop playsinline preload="metadata"${poster}></video>`
+    ? `<video data-project-preview data-src="${escapeHtml(video)}" muted loop playsinline preload="none"${poster}></video>`
     : (thumbnail
       ? `<img src="${escapeHtml(thumbnail)}" alt="${escapeHtml(project.name)}" loading="lazy" />`
       : '<span class="film-card__placeholder" aria-hidden="true"></span>');
@@ -410,7 +412,8 @@ const renderSocialLinks = (social) => (Array.isArray(social) ? social : [])
   })
   .join('');
 
-export const renderContactPageMarkup = (contact) => {
+export const renderContactPageMarkup = (contact, language = 'en') => {
+  const words = copy(language);
   const email = String(contact?.email || '').trim();
   const phone = String(contact?.phone || '').trim();
   const location = String(contact?.location || '').trim();
@@ -418,25 +421,38 @@ export const renderContactPageMarkup = (contact) => {
   return `
     <div class="contact-final">
       <div>
-        <p class="contact-final__eyebrow">Start a project / Athens to worldwide</p>
-        <h2 class="contact-final__title">Have something<br>in mind?<br><em>Let's make it.</em></h2>
+        <p class="contact-final__eyebrow">${words.start}</p>
+        <h2 class="contact-final__title">${language === 'el' ? 'Έχετε μια ιδέα;<br><em>Ας της δώσουμε εικόνα.</em>' : "Have something<br>in mind?<br><em>Let's make it.</em>"}</h2>
       </div>
       <div class="contact-final__details">
         <div>
-          <p class="contact-final__meta">Email</p>
+          <p class="contact-final__meta">${words.email}</p>
           <a href="mailto:${escapeHtml(email)}" data-film-cursor data-cursor-kind="contact" data-cursor-label="Let's Talk">${escapeHtml(email)}</a>
         </div>
         <div>
-          <p class="contact-final__meta">Telephone</p>
+          <p class="contact-final__meta">${words.phone}</p>
           <a href="tel:${escapeHtml(phone.replace(/\s+/g, ''))}">${escapeHtml(phone)}</a>
         </div>
         <div>
-          <p class="contact-final__meta">Available worldwide</p>
+          <p class="contact-final__meta">${words.worldwide}</p>
           <strong>${escapeHtml(location)}</strong>
         </div>
         <div class="contact-final__socials">${socialLinks}</div>
       </div>
-    </div>`;
+    </div>
+    <form class="inquiry-form" id="inquiry-form" action="/api/contact" method="post">
+      <h3>${words.inquiryTitle}</h3>
+      <div class="inquiry-form__grid">
+        <label for="inquiry-name">${words.name}<input id="inquiry-name" name="name" autocomplete="name" minlength="2" maxlength="120" required /></label>
+        <label for="inquiry-email">${words.email}<input id="inquiry-email" name="email" type="email" autocomplete="email" maxlength="254" required /></label>
+        <label for="inquiry-company">${words.company}<input id="inquiry-company" name="company" autocomplete="organization" maxlength="200" /></label>
+        <label class="inquiry-form__wide" for="inquiry-message">${words.message}<textarea id="inquiry-message" name="message" rows="4" minlength="20" maxlength="5000" required></textarea></label>
+      </div>
+      <div class="inquiry-form__trap" aria-hidden="true"><label for="inquiry-website">Website<input id="inquiry-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+      <label class="inquiry-form__consent" for="inquiry-privacy"><input id="inquiry-privacy" name="privacy" type="checkbox" required /><span>${words.privacy} <a href="${language === 'el' ? '/el/privacy' : '/privacy'}">${words.privacyLink}</a></span></label>
+      <button class="inquiry-form__submit" type="submit">${words.send}</button>
+      <p class="inquiry-form__status" id="inquiry-status" role="status" aria-live="polite"></p>
+    </form>`;
 };
 
 export const renderAboutPageMarkup = () => `

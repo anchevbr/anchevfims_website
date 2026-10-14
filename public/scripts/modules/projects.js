@@ -32,7 +32,7 @@ export let projectModal = null;
 
 const fetchProjects = async () => {
   try {
-    const response = await fetch('/api/projects');
+    const response = await fetch(`/api/projects?lang=${document.documentElement.lang === 'el' ? 'el' : 'en'}`);
     if (!response.ok) throw new Error('Unable to load projects.');
     const data = await response.json();
     const projects = Array.isArray(data.projects) ? data.projects : [];
@@ -72,7 +72,10 @@ const bindPreviewPlayback = (card) => {
   const video = card.querySelector('[data-project-preview]');
   if (!video || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
 
-  const play = () => video.play().catch(() => undefined);
+  const play = () => {
+    if (!video.src && video.dataset.src) video.src = video.dataset.src;
+    video.play().catch(() => undefined);
+  };
   const pause = () => {
     video.pause();
     video.currentTime = 0;
@@ -328,6 +331,7 @@ const bindProjectBrowser = (root, projects) => {
     const card = button.closest('.film-card');
     bindPreviewPlayback(card);
     button.addEventListener('click', (event) => {
+      if (document.documentElement.lang === 'el') return;
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
       openProjectModal(project, card);
@@ -343,11 +347,27 @@ export const renderProjectBrowser = async () => {
   }
   root.setAttribute('aria-busy', 'true');
   const projects = await fetchProjects();
-  if (!projectsRequestFailed || root.querySelector('.work-browser-loading')) {
+  if ((!projectsRequestFailed && !root.querySelector('[data-project-id]')) || root.querySelector('.work-browser-loading')) {
     root.innerHTML = projects.length ? projects.map(renderProjectCardMarkup).join('') : emptyProjectsMarkup();
   }
   root.setAttribute('aria-busy', 'false');
   bindProjectBrowser(root, projects);
+  const search = document.getElementById('work-search');
+  const category = document.getElementById('work-category');
+  const filter = () => {
+    let count = 0;
+    root.querySelectorAll('.film-card').forEach((card) => {
+      const project = projects.find((entry) => entry.id === card.querySelector('[data-project-id]')?.dataset.projectId);
+      const query = search?.value.toLowerCase().trim() || '';
+      const visible = Boolean(project && (!query || `${project.name} ${project.client} ${project.category}`.toLowerCase().includes(query)) && (!category?.value || project.category === category.value));
+      card.hidden = !visible;
+      if (visible) count++;
+    });
+    const status = document.getElementById('work-filter-status');
+    if (status) status.textContent = document.documentElement.lang === 'el' ? `${count} παραγωγές` : `${count} productions`;
+  };
+  search?.addEventListener('input', filter);
+  category?.addEventListener('change', filter);
   return projects;
 };
 

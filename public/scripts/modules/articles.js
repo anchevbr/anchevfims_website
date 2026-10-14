@@ -3,6 +3,7 @@ import { renderArticlesMarkup } from '/scripts/modules/content-markup.js';
 export const renderArticles = async () => {
   const root = document.getElementById('articles-list');
   if (!root) return;
+  if (root.querySelector('article')) return;
 
   try {
     const response = await fetch('/api/articles');

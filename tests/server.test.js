@@ -78,3 +78,50 @@ test('contact submissions validate consent and persist real inquiries', async ()
   const inbox = await (await fetch(`${origin}/api/admin/inquiries`, { headers: { cookie } })).json();
   assert.equal(inbox.inquiries.length, 1);
 });
+
+const adminPost = (route, body) => fetch(`${origin}/api/admin/${route}`, { method: 'POST', headers: { cookie, origin, 'x-csrf-token': csrf, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+test('Greek homepage has self-canonical metadata and untranslated projects have no Greek route', async () => {
+  const response = await fetch(`${origin}/el/`);
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /<html lang="el">/);
+  assert.ok(html.includes(`rel="canonical" href="${origin}/el/"`));
+  assert.match(html, /Ονοματεπώνυμο/);
+  assert.equal((await fetch(`${origin}/el/work/kept-url`)).status, 404);
+  const english = await (await fetch(`${origin}/work/kept-url`)).text();
+  assert.equal(english.includes('href="/el/work/kept-url"'), false);
+});
+
+test('reviewed project translations publish with reciprocal metadata and SEO overrides', async () => {
+  const response = await adminPost('projects', { id: 'translated-film', name: 'English film', note: 'An English film description', publish: true, seo: { title: 'Custom film title', description: 'An approved search description.' }, translations: { el: { name: 'Ελληνική ταινία', note: 'Περιγραφή της ταινίας στα ελληνικά.', ready: true } } });
+  assert.equal(response.status, 200);
+  const english = await (await fetch(`${origin}/work/translated-film`)).text();
+  assert.match(english, /<title>Custom film title<\/title>/);
+  assert.match(english, /hreflang="el"/);
+  const greek = await fetch(`${origin}/el/work/translated-film`);
+  assert.equal(greek.status, 200);
+  assert.match(await greek.text(), /Ελληνική ταινία/);
+  const sitemap = await (await fetch(`${origin}/sitemap.xml`)).text();
+  assert.ok(sitemap.includes('/el/work/translated-film'));
+});
+
+test('custom page drafts stay private and published pages and redirects resolve', async () => {
+  const draft = { id: 'production-guide', locale: 'en', heading: 'Production guide', body: 'A real published content block.', blocks: [{ type: 'text', title: 'Planning', text: 'Define the brief before filming.' }] };
+  const saved = await adminPost('pages', draft);
+  assert.equal(saved.status, 200);
+  assert.equal((await fetch(`${origin}/pages/production-guide`)).status, 404);
+  const page = (await saved.json()).saved;
+  assert.equal((await adminPost('pages', { ...page, publish: true })).status, 200);
+  const published = await fetch(`${origin}/pages/production-guide`);
+  assert.equal(published.status, 200);
+  const html = await published.text();
+  assert.match(html, /Define the brief before filming/);
+  assert.equal(html.includes('href="/el/pages/production-guide"'), false);
+  assert.equal((await adminPost('redirects', { source: '/old-production-guide', target: '/pages/production-guide' })).status, 200);
+  const redirect = await fetch(`${origin}/old-production-guide?source=legacy`, { redirect: 'manual' });
+  assert.equal(redirect.status, 301);
+  assert.equal(redirect.headers.get('location'), '/pages/production-guide?source=legacy');
+  assert.equal((await fetch(`${origin}/privacy`)).status, 200);
+  assert.equal((await fetch(`${origin}/el/privacy`)).status, 200);
+});

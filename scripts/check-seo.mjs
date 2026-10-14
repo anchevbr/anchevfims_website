@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { XMLParser } from 'fast-xml-parser';
+import { load } from 'cheerio';
 import { servicePages, getServicePath } from '../public/scripts/modules/service-pages.js';
 
 const base = process.env.CHECK_URL || 'http://localhost:3011';
-const paths = ['/', '/studio', '/el/studio', ...servicePages.flatMap((page) => ['en', 'el'].map((language) => getServicePath(page, language)))];
+const paths = ['/', '/el/', '/studio', '/el/studio', ...servicePages.flatMap((page) => ['en', 'el'].map((language) => getServicePath(page, language)))];
 const sitemapResponse = await fetch(`${base}/sitemap.xml`);
 assert.equal(sitemapResponse.status, 200);
 const sitemap = new XMLParser().parse(await sitemapResponse.text());
@@ -18,17 +19,19 @@ for (const pathname of [...paths, ...projectPaths, ...episodePaths]) {
   const response = await fetch(`${base}${pathname}`);
   assert.equal(response.status, 200, pathname);
   const html = await response.text();
+  const document = load(html);
   const title = html.match(/<title>(.*?)<\/title>/s)?.[1];
   assert.ok(title, `${pathname}: title`);
   assert.ok(!titles.has(title), `${pathname}: unique title`);
   titles.add(title);
-  assert.ok(html.includes(`<link rel="canonical" href="${canonicalOrigin}${pathname === '/' ? '' : pathname}"`), `${pathname}: canonical`);
+  const canonical = document('link[rel="canonical"]').attr('href');
+  assert.equal(new URL(canonical).href, new URL(pathname, canonicalOrigin).href, `${pathname}: canonical`);
   assert.match(html, /<meta name="description" content="[^"]+"/);
   assert.match(html, /<meta name="robots" content="index,follow/);
   assert.ok(!response.headers.get('x-robots-tag')?.includes('noindex'));
   assert.equal((html.match(/<h1\b/g) || []).length, 1, `${pathname}: single H1`);
-  assert.ok(locations.includes(`${canonicalOrigin}${pathname === '/' ? '' : pathname}`), `${pathname}: sitemap`);
-  const schema = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1] || 'null');
+  assert.ok(locations.some((location) => new URL(location).href === new URL(pathname, canonicalOrigin).href), `${pathname}: sitemap`);
+  const schema = JSON.parse(document('script[type="application/ld+json"]').text() || 'null');
   assert.ok(schema?.['@graph']?.length, `${pathname}: schema`);
   const greek = pathname.startsWith('/el/') || pathname.startsWith('/podcast/');
   assert.ok(html.includes(`<html lang="${greek ? 'el' : 'en'}">`), `${pathname}: language`);

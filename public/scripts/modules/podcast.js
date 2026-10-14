@@ -45,6 +45,10 @@ const bindEpisodePlayback = (root) => {
 export const renderPodcast = async () => {
   const root = document.getElementById('podcast-episodes-list');
   if (!root) return;
+  if (root.querySelector('[data-podcast-play]')) {
+    bindEpisodePlayback(root);
+    return;
+  }
 
   try {
     const response = await fetch('/api/podcast');

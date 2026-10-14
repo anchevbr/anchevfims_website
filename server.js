@@ -11,6 +11,7 @@ import { ContentStore } from './src/database.js';
 import { installAuthentication } from './src/auth.js';
 import { installAdminApi } from './src/admin-api.js';
 import { MediaService } from './src/media.js';
+import { renderPublicDocument, renderPageBody } from './src/public-pages.js';
 import {
   renderAboutPageMarkup,
   renderArticlesMarkup,
@@ -35,6 +36,7 @@ const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'
 const store = new ContentStore(dataDir);
 store.importJson();
 const media = new MediaService(store, uploadsDir);
+if (process.env.NODE_ENV === 'production' && !/^https:\/\//.test(process.env.SITE_URL || '')) throw new Error('Production requires an HTTPS SITE_URL.');
 const indexFile = path.join(publicDir, 'index.html');
 const projectTemplateFile = path.join(publicDir, 'project.html');
 const projectsFile = path.join(dataDir, 'projects.json');
@@ -216,8 +218,7 @@ const getSiteOrigin = (req) => {
   const host = /^[a-z0-9.-]+(?::\d+)?$/i.test(requestedHost)
     ? requestedHost
     : `localhost:${port}`;
-  const forwardedProtocol = cleanSeoText(req.get('x-forwarded-proto')).split(',')[0].toLowerCase();
-  const protocol = forwardedProtocol === 'https' || req.protocol === 'https' ? 'https' : 'http';
+  const protocol = req.protocol === 'https' ? 'https' : 'http';
   return `${protocol}://${host}`;
 };
 
@@ -252,7 +253,7 @@ const getImageMimeType = (value) => {
 };
 
 const getWorkIdFromPath = (pathname) => {
-  const match = pathname.match(/^\/work\/([^/]+)\/?$/);
+  const match = pathname.match(/^\/(?:el\/)?work\/([^/]+)\/?$/);
   if (!match) return '';
   try {
     return decodeURIComponent(match[1]).trim().toLowerCase();
@@ -558,6 +559,7 @@ const getProjectSchema = ({ origin, canonical, image, siteImage, logo, project, 
 };
 
 const getSeoPage = async (req) => {
+  const language = req.path === '/el' || req.path.startsWith('/el/') ? 'el' : 'en';
   const [settings, clients, articles, rawProjects, podcast] = await Promise.all([
     readSettings(),
     readClients(),
@@ -568,11 +570,36 @@ const getSeoPage = async (req) => {
   const projects = Array.isArray(rawProjects) ? rawProjects : [];
   const origin = getSiteOrigin(req);
   const workId = getWorkIdFromPath(req.path);
-  const project = workId ? projects.find((entry) => entry.id === workId) : null;
-  const isHomeRoute = req.path === '/' || req.path === '/index.html';
+  const candidate = workId ? store.project(workId, { publicOnly: true, locale: language }) : null;
+  const project = language === 'el' && !candidate?.hasGreek ? null : candidate;
+  const isHomeRoute = req.path === '/' || req.path === '/index.html' || req.path === '/el/';
   const isAdminRoute = req.path === '/studio/anchev' || req.path.startsWith('/studio/');
   const logo = getAbsoluteUrl(origin, '/assets/anchevlogo.png');
   const defaultImage = getAbsoluteUrl(origin, '/assets/anchev-films-social.jpg');
+  const customId = req.path.match(/^\/(?:el\/)?pages\/([a-z0-9-]+)$/)?.[1];
+  const privacyRoute = req.path === '/privacy' || req.path === '/el/privacy';
+  const customPage = customId ? store.page(customId, language, true) : privacyRoute ? store.page('privacy', language, true) || {
+    id: 'privacy', locale: language,
+    heading: language === 'el' ? 'Πολιτική απορρήτου' : 'Privacy notice',
+    intro: language === 'el' ? 'Πληροφορίες για τα στοιχεία επικοινωνίας και τις επιλογές απορρήτου στην Anchev Films.' : 'How Anchev Films handles inquiries and privacy choices on this website.',
+    body: language === 'el'
+      ? `Χρησιμοποιούμε το όνομα, το email, την εταιρεία και το μήνυμα που υποβάλλετε για να απαντήσουμε στο αίτημά σας και να συζητήσουμε πιθανή συνεργασία. Τα μηνύματα αποθηκεύονται στο προστατευμένο σύστημα διαχείρισης και διατηρούνται έως ${Number(process.env.INQUIRY_RETENTION_DAYS || 90)} ημέρες, εκτός αν απαιτείται νόμιμη περαιτέρω διατήρηση. Μπορείτε να ζητήσετε πρόσβαση, διόρθωση ή διαγραφή επικοινωνώντας στο ${settings.contact.email}.\n\nΤα cookies διαχείρισης είναι απαραίτητα μόνο για τη σύνδεση εξουσιοδοτημένων χρηστών. Τα εργαλεία Google Analytics και μέτρησης διαφήμισης ενεργοποιούνται σύμφωνα με τις επιλογές σας, οι οποίες αλλάζουν στις ρυθμίσεις cookies. Τα βίντεο YouTube φορτώνονται μετά από δική σας ενέργεια. Οι υπηρεσίες τρίτων εφαρμόζουν τις δικές τους πολιτικές απορρήτου.\n\nΓια ζητήματα προστασίας δεδομένων μπορείτε να απευθυνθείτε στην Ελληνική Αρχή Προστασίας Δεδομένων Προσωπικού Χαρακτήρα.`
+      : `We use the name, email address, company and message you submit to respond to your inquiry and discuss a possible production. Messages are stored in the protected administration system and retained for up to ${Number(process.env.INQUIRY_RETENTION_DAYS || 90)} days, unless a legal obligation requires further retention. Request access, correction or deletion by contacting ${settings.contact.email}.\n\nAdmin session cookies are necessary only for authorized sign-in. Google Analytics and advertising measurement follow your optional consent choices, which can be changed through cookie settings. YouTube films load after your click. Third-party services apply their own privacy policies.\n\nYou may raise data-protection concerns with the Hellenic Data Protection Authority.`,
+    blocks: [], seo: { noindex: false }
+  } : null;
+  if (customPage?.heading) {
+    const canonical = getAbsoluteUrl(origin, req.path);
+    const description = customPage.seo?.description || limitSeoDescription(customPage.intro || customPage.body);
+    const counterpart = customId ? store.page(customId, language === 'el' ? 'en' : 'el', true) : privacyRoute;
+    return {
+      status: 200, title: customPage.seo?.title || `${customPage.heading} | ${SITE_NAME}`, description, canonical,
+      image: getAbsoluteUrl(origin, customPage.seo?.image) || defaultImage, imageAlt: customPage.heading,
+      ogType: 'website', language, robots: customPage.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large',
+      alternates: counterpart ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, `${locale === 'el' ? '/el' : ''}${privacyRoute ? '/privacy' : `/pages/${customId}`}`) })) : [],
+      schema: { '@context': 'https://schema.org', '@type': 'WebPage', name: customPage.heading, url: canonical, inLanguage: language, description },
+      renderData: { customPage, language }
+    };
+  }
   const episode = podcast?.episodes?.find((entry) => getPodcastEpisodePath(entry) === req.path);
   if (episode) {
     const canonical = getAbsoluteUrl(origin, getPodcastEpisodePath(episode));
@@ -593,7 +620,6 @@ const getSeoPage = async (req) => {
     };
   }
   const servicePage = getServicePage(req.path);
-  const language = req.path.startsWith('/el/') ? 'el' : 'en';
   const alternates = servicePage ? getLanguageAlternates(servicePage).map((entry) => ({
     language: entry.language,
     url: getAbsoluteUrl(origin, entry.path)
@@ -699,13 +725,15 @@ const getSeoPage = async (req) => {
   }
 
   if (project) {
-    const canonical = getAbsoluteUrl(origin, `/work/${encodeURIComponent(project.id)}`);
+    const canonical = getAbsoluteUrl(origin, `${language === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`);
     const projectImage = getAbsoluteUrl(origin, project.thumbnail);
-    const image = projectImage || defaultImage;
-    const description = getProjectDescription(project);
+    const image = getAbsoluteUrl(origin, project.seo?.image) || projectImage || defaultImage;
+    const description = project.seo?.description || getProjectDescription(project);
     return {
       status: 200,
-      title: `${project.name}${project.client ? ` | ${project.client}` : ''} | ${SITE_NAME}`,
+      title: project.seo?.title || `${project.name}${project.client ? ` | ${project.client}` : ''} | ${SITE_NAME}`,
+      language,
+      alternates: project.hasGreek ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, `${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`) })) : [],
       description,
       canonical,
       image,
@@ -716,7 +744,7 @@ const getSeoPage = async (req) => {
       imageWidth: projectImage ? null : 1200,
       imageHeight: projectImage ? null : 630,
       ogType: project.video ? 'video.other' : 'article',
-      robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+      robots: project.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
       schema: getProjectSchema({
         origin,
         canonical,
@@ -727,16 +755,19 @@ const getSeoPage = async (req) => {
         description,
         settings
       }),
-      renderData: { settings, clients, articles, projects, podcast, project }
+      renderData: { settings, clients, articles, projects, podcast, project, language }
     };
   }
 
-  const description = getHomeDescription(podcast);
+  const description = language === 'el' ? 'Η Anchev Films είναι εταιρεία κινηματογραφικής παραγωγής στην Αθήνα. Διαφημιστικά, εταιρικές ταινίες, γυρίσματα, στούντιο και post-production.' : settings.seo?.description || getHomeDescription(podcast);
+  const homeCanonical = getAbsoluteUrl(origin, language === 'el' ? '/el/' : '/');
   return {
     status: isHomeRoute || isAdminRoute ? 200 : 404,
-    title: `${SITE_NAME} | Film Production Company in Athens`,
+    title: language === 'el' ? `${SITE_NAME} | Κινηματογραφική παραγωγή στην Αθήνα` : settings.seo?.title || `${SITE_NAME} | Film Production Company in Athens`,
     description,
-    canonical: origin,
+    canonical: homeCanonical,
+    language,
+    alternates: isHomeRoute ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, locale === 'el' ? '/el/' : '/') })) : [],
     image: defaultImage,
     imageAlt: `${SITE_NAME}, film production in Athens`,
     imageType: 'image/jpeg',
@@ -756,7 +787,7 @@ const getSeoPage = async (req) => {
       articles,
       podcast
     }),
-    renderData: { settings, clients, articles, projects, podcast }
+    renderData: { settings, clients, articles, projects, podcast, language }
   };
 };
 
@@ -824,19 +855,21 @@ const getSitemapDates = async (podcast) => {
     getLatestTimestamp([projectsFile])
   ]);
   const podcastTimestamp = Date.parse(podcast?.updatedAt || '') || 0;
-  const latestHomeTimestamp = Math.max(homeTimestamp, podcastTimestamp);
+  const contentTimestamp = Date.parse(store.db.prepare("SELECT max(created_at) AS updated FROM audit WHERE action LIKE 'project.%' OR action LIKE 'page.%' OR action IN ('settings.save','clients.save','article.save','article.delete','legacy.import')").get().updated || '') || 0;
+  const latestHomeTimestamp = Math.max(homeTimestamp, podcastTimestamp, contentTimestamp);
   return {
     home: new Date(latestHomeTimestamp || Date.now()).toISOString().slice(0, 10),
-    projects: new Date(projectsTimestamp || homeTimestamp || Date.now()).toISOString().slice(0, 10)
+    projects: new Date(Math.max(projectsTimestamp, contentTimestamp) || homeTimestamp || Date.now()).toISOString().slice(0, 10)
   };
 };
 
-const getSitemapUrl = ({ location, lastModified, priority, changeFrequency, image, imageTitle }) => [
+const getSitemapUrl = ({ location, lastModified, priority, changeFrequency, image, imageTitle, alternates = [] }) => [
   '  <url>',
   `    <loc>${escapeHtml(location)}</loc>`,
   `    <lastmod>${lastModified}</lastmod>`,
   `    <changefreq>${changeFrequency}</changefreq>`,
   `    <priority>${priority}</priority>`,
+  ...alternates.map((entry) => `    <xhtml:link rel="alternate" hreflang="${entry.language}" href="${escapeHtml(entry.url)}" />`),
   ...(image ? [
     '    <image:image>',
     `      <image:loc>${escapeHtml(image)}</image:loc>`,
@@ -879,9 +912,11 @@ const renderDynamicContent = (template, data) => {
 const renderSeoPage = async (req, res) => {
   try {
     const seo = await getSeoPage(req);
-    const template = await fs.readFile(seo.renderData.project || seo.renderData.studio || seo.renderData.servicePage || seo.renderData.episode ? projectTemplateFile : indexFile, 'utf8');
+    const template = await fs.readFile(seo.renderData.project || seo.renderData.studio || seo.renderData.servicePage || seo.renderData.episode || seo.renderData.customPage ? projectTemplateFile : indexFile, 'utf8');
     const seoMarkup = `<!-- SEO:START -->\n    ${getSeoTags(seo)}\n    <!-- SEO:END -->`;
-    const renderedTemplate = seo.renderData.episode
+    const renderedTemplate = seo.renderData.customPage
+      ? injectRootMarkup(template, 'project-page-root', renderPageBody(seo.renderData.customPage, seo.language))
+      : seo.renderData.episode
       ? injectRootMarkup(template, 'project-page-root', renderPodcastPageMarkup(seo.renderData.episode, seo.renderData.podcast))
       : seo.renderData.servicePage
       ? injectRootMarkup(template, 'project-page-root', renderServicePageMarkup(seo.renderData.servicePage, seo.renderData.language, seo.renderData.projects, seo.renderData.settings.contact || {}))
@@ -891,7 +926,8 @@ const renderSeoPage = async (req, res) => {
       ? injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(seo.renderData.project, seo.renderData.projects, seo.description))
       : renderDynamicContent(template, seo.renderData);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(seo.status || 200).type('html').send(renderedTemplate.replace(SEO_BLOCK, seoMarkup).replace('<html lang="en">', `<html lang="${seo.language || 'en'}">`).replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
+    const document = renderPublicDocument(renderedTemplate.replace(SEO_BLOCK, seoMarkup), { language: seo.language || 'en', route: req.path, store, home: req.path === '/' || req.path === '/index.html' || req.path === '/el/', project: seo.renderData.project });
+    res.status(seo.status || 200).type('html').send(document.replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (_error) {
     res.status(500).send('Unable to render this page.');
   }
@@ -913,7 +949,7 @@ app.use(helmet({
       imgSrc: ["'self'", 'https:', 'data:'],
       mediaSrc: ["'self'", 'https:'],
       connectSrc: ["'self'", 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.google.com', 'https://*.doubleclick.net'],
-      frameSrc: ['https://www.youtube-nocookie.com', 'https://www.youtube.com', 'https://player.vimeo.com'],
+      frameSrc: ["'self'", 'https://www.youtube-nocookie.com', 'https://www.youtube.com', 'https://player.vimeo.com'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       frameAncestors: ["'none'"],
@@ -934,6 +970,18 @@ installAuthentication(app, store);
 installAdminApi(app, store);
 media.install(app);
 if (process.env.MEDIA_WORKER !== '0') media.start();
+app.get('/api/admin/projects/:id/preview.html', async (req, res, next) => {
+  try {
+    const project = store.project(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    const template = await fs.readFile(projectTemplateFile, 'utf8');
+    const markup = injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(project, [], project.note || project.brief || ''));
+    res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+    res.type('html').send(markup.replace(SEO_BLOCK, '<meta name="robots" content="noindex,nofollow,noarchive" />').replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
+  } catch (error) { next(error); }
+});
 const servePublicFiles = express.static(publicDir, {
   extensions: ['html'],
   index: false,
@@ -952,9 +1000,9 @@ app.get('/health', (_req, res) => {
   res.json({ ok: Boolean(store.db.prepare('SELECT 1 AS ok').get().ok), release: process.env.RELEASE_VERSION || 'development' });
 });
 
-app.get('/api/projects', async (_req, res) => {
+app.get('/api/projects', async (req, res) => {
   try {
-    const projects = await readProjects();
+    const projects = store.projects({ publicOnly: true, locale: req.query.lang === 'el' ? 'el' : 'en' });
     res.json({ projects });
   } catch (_error) {
     res.status(500).json({ error: 'Failed to load projects' });
@@ -1044,6 +1092,7 @@ app.get('/sitemap.xml', async (req, res) => {
         image: getAbsoluteUrl(origin, '/assets/anchev-films-social.jpg'),
         imageTitle: `${SITE_NAME} film production in Athens`
       }),
+      getSitemapUrl({ location: `${origin}/el/`, lastModified: dates.home, priority: '1.0', changeFrequency: 'weekly', alternates: ['en','el','x-default'].map((language) => ({ language, url: `${origin}${language === 'el' ? '/el/' : '/'}` })) }),
       getSitemapUrl({
         location: getAbsoluteUrl(origin, '/studio'),
         lastModified: dates.home,
@@ -1060,20 +1109,22 @@ app.get('/sitemap.xml', async (req, res) => {
         image: episode.image || podcast.cover, imageTitle: episode.title
       })),
       ...projects
-        .filter((project) => project.id)
-        .map((project) => getSitemapUrl({
-          location: getAbsoluteUrl(origin, `/work/${encodeURIComponent(project.id)}`),
+        .filter((project) => project.id && !project.seo?.noindex)
+        .flatMap((project) => (project.hasGreek ? ['en','el'] : ['en']).map((language) => getSitemapUrl({
+          location: getAbsoluteUrl(origin, `${language === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`),
           lastModified: dates.projects,
           priority: '0.8',
           changeFrequency: 'monthly',
           image: getAbsoluteUrl(origin, project.thumbnail),
-          imageTitle: project.name
-        }))
+          imageTitle: project.name,
+          alternates: project.hasGreek ? ['en','el','x-default'].map((locale) => ({ language: locale, url: `${origin}${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}` })) : []
+        }))),
+      ...store.db.prepare('SELECT id,locale,published,updated_at FROM pages WHERE published IS NOT NULL').all().filter((page) => !JSON.parse(page.published).seo?.noindex).map((page) => getSitemapUrl({ location: `${origin}${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, lastModified: page.updated_at.slice(0,10), priority: '0.6', changeFrequency: 'monthly' }))
     ];
     res.setHeader('Cache-Control', 'no-store');
     res.type('application/xml').send([
       '<?xml version="1.0" encoding="UTF-8"?>',
-      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
       ...entries,
       '</urlset>'
     ].join('\n'));
@@ -1082,11 +1133,26 @@ app.get('/sitemap.xml', async (req, res) => {
   }
 });
 
-app.get(/^\/work\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+app.get(/^\/(?:el\/)?(?:work|pages)\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
 app.get(/^\/podcast\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
 app.get(/^\/(?:el\/)?(?:services\/[^/]+|studio)\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
-app.get(['/', '/index.html', '/work/:id', '/studio', '/services/:slug', '/el/services/:slug', '/el/studio'], renderSeoPage);
+app.get(/^\/en(?:\/.*)?$/, (req, res) => res.redirect(301, `${req.path.replace(/^\/en/, '') || '/'}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+app.get(/^\/el$/, (req, res) => res.redirect(301, `/el/${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+app.use((req, res, next) => {
+  if (!['GET','HEAD'].includes(req.method)) return next();
+  const redirect = store.db.prepare('SELECT target FROM redirects WHERE source=?').get(req.path);
+  if (redirect) return res.redirect(301, `${redirect.target}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`);
+  next();
+});
+app.get(['/', '/index.html', '/el/', '/work/:id', '/el/work/:id', '/studio', '/services/:slug', '/el/services/:slug', '/el/studio', '/pages/:id', '/el/pages/:id', '/privacy', '/el/privacy'], renderSeoPage);
 app.get(['/project', '/project.html'], (_req, res) => res.redirect(301, '/'));
+app.get('/vendor/lucide.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules', 'lucide', 'dist', 'umd', 'lucide.min.js')));
+app.get(['/admin', '/admin.html'], (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+  res.sendFile(path.join(publicDir, 'admin.html'));
+});
+app.get('/studio/anchev', (_req, res) => res.redirect(301, '/admin'));
 app.use('/uploads', express.static(uploadsDir, { dotfiles: 'deny', fallthrough: false, maxAge: 0 }));
 app.use(servePublicFiles);
 

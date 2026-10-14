@@ -4,12 +4,16 @@
   "private": true,
   "description": "Premium cinematic landing page for a video production company",
   "type": "module",
-  "engines": { "node": ">=24.0.0 <25" },
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
   "scripts": {
     "dev": "node --env-file-if-exists=.env server.js",
     "start": "NODE_ENV=production node --env-file-if-exists=.env server.js",
     "preview": "node scripts/preview.mjs",
     "test": "node --test tests/*.test.js",
+    "test:browser": "playwright test",
+    "lint": "eslint src tests scripts/*.mjs playwright.config.js public/scripts/console.js public/scripts/modules/localization.js public/scripts/modules/language.js",
     "admin:create": "node --env-file-if-exists=.env scripts/create-admin.mjs",
     "migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "check:seo": "node scripts/check-seo.mjs",
@@ -17,6 +21,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "cheerio": "^1.2.0",
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.1",
     "express-session": "^1.19.0",
@@ -34,6 +39,7 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.0",
     "eslint": "^10.12.0",
+    "globals": "^17.13.0",
     "lighthouse": "^13.5.0"
   }
 }
