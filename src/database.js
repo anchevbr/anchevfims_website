@@ -236,16 +236,31 @@ export class ContentStore {
   }
 
   settings() {
-    const rows = this.db.prepare("SELECT key,value FROM settings WHERE key NOT LIKE 'migration.%'").all();
+    const rows = this.db.prepare("SELECT key,value FROM settings WHERE key NOT LIKE 'migration.%' AND key!='system.settings-version'").all();
     return Object.fromEntries(rows.map((row) => [row.key, parse(row.value)]));
   }
 
-  setSettings(settings, actor = null) {
-    this.db.transaction(() => {
+  settingsVersion() {
+    return parse(this.db.prepare("SELECT value FROM settings WHERE key='system.settings-version'").get()?.value, 0);
+  }
+
+  adminSettings() { return { ...this.settings(), version: this.settingsVersion() }; }
+
+  setSettings(settings, actor = null, version, action = 'settings.save', replace = false) {
+    return this.db.transaction(() => {
+      const currentVersion = this.settingsVersion();
+      if (actor && version !== currentVersion) throw conflict();
+      const current = this.settings();
+      const merged = replace ? settings : { ...current, ...settings };
+      if (!actor && JSON.stringify(current) === JSON.stringify(merged)) return this.adminSettings();
+      if (actor) this.db.prepare('INSERT INTO revisions(entity_type,entity_id,document,actor_id,created_at) VALUES (?,?,?,?,?)').run('settings', 'site', JSON.stringify(current), actor, now());
+      if (replace) this.db.prepare("DELETE FROM settings WHERE key NOT LIKE 'migration.%' AND key!='system.settings-version'").run();
       const statement = this.db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
       Object.entries(settings).forEach(([key, value]) => statement.run(key, JSON.stringify(value)));
-      this.syncUsage('settings', 'site', settings);
-      if (actor) this.audit(actor, 'settings.save', 'settings', 'site');
+      statement.run('system.settings-version', JSON.stringify(currentVersion + 1));
+      this.syncUsage('settings', 'site', merged);
+      if (actor) this.audit(actor, action, 'settings', 'site');
+      return this.adminSettings();
     })();
   }
 

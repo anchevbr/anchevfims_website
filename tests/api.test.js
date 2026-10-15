@@ -32,6 +32,38 @@ const client = () => {
 };
 const ownerClient = client();
 
+test('settings saves reject stale versions and restoration retains history without exposing versions publicly', async () => {
+  store.setSettings({ videoSource: '', mobileVideoSource: '', showreelSource: '', contact: { email: 'initial@example.com', phone: '', location: '' }, social: [] });
+  const first = (await ownerClient.request('/settings')).data;
+  store.setSettings(store.settings());
+  assert.equal(store.settingsVersion(), first.version);
+  const changed = await ownerClient.request('/settings', 'POST', { ...first, contact: { ...first.contact, email: 'updated@example.com' }, homepage: { en: { heroKicker: 'Later copy' } } });
+  assert.equal(changed.response.status, 200);
+  assert.equal(changed.data.version, first.version + 1);
+  assert.equal((await ownerClient.request('/settings', 'POST', first)).response.status, 409);
+  assert.equal(store.settings().contact.email, 'updated@example.com');
+  assert.equal(Object.hasOwn(store.settings(), 'version'), false);
+  assert.equal(Object.hasOwn(store.settings(), 'system.settings-version'), false);
+  const revisions = (await ownerClient.request('/settings/revisions')).data.revisions;
+  assert.equal(revisions.length, 1);
+  assert.equal(Object.hasOwn(revisions[0], 'document'), false);
+  assert.equal((await ownerClient.request(`/settings/revisions/${revisions[0].id}/restore`, 'POST', { version: first.version })).response.status, 409);
+  const restored = await ownerClient.request(`/settings/revisions/${revisions[0].id}/restore`, 'POST', { version: changed.data.version });
+  assert.equal(restored.response.status, 200);
+  assert.equal(restored.data.contact.email, 'initial@example.com');
+  assert.equal(store.settings().homepage, undefined);
+  assert.equal((await ownerClient.request('/settings/revisions')).data.revisions.length, 2);
+  const beforeFailure = store.adminSettings();
+  const history = (await ownerClient.request('/settings/revisions')).data.revisions;
+  store.db.exec("CREATE TRIGGER settings_failure BEFORE INSERT ON settings WHEN NEW.key='contact' BEGIN SELECT RAISE(ABORT,'injected settings failure'); END;");
+  try {
+    const failed = await ownerClient.request(`/settings/revisions/${history[0].id}/restore`, 'POST', { version: beforeFailure.version });
+    assert.equal(failed.response.status, 500);
+    assert.deepEqual(store.adminSettings(), beforeFailure);
+    assert.equal((await ownerClient.request('/settings/revisions')).data.revisions.length, history.length);
+  } finally { store.db.exec('DROP TRIGGER settings_failure'); }
+});
+
 before(async () => {
   process.env.MFA_ENCRYPTION_KEY = 'test-only-mfa-encryption-key-long-enough';
   directory = await mkdtemp(path.join(tmpdir(), 'anchev-api-'));
@@ -86,6 +118,7 @@ test('editors can save drafts but cannot publish, delete or change settings', as
   assert.equal(forbidden.response.status, 403);
   assert.equal((await browser.request('/projects/editor-film', 'DELETE')).response.status, 403);
   assert.equal((await browser.request('/settings', 'POST', {})).response.status, 403);
+  assert.equal((await browser.request('/settings/revisions/1/restore', 'POST', { version: store.settingsVersion() })).response.status, 403);
 });
 
 test('publishing, draft revisions, duplicate and unpublish form a complete workflow', async () => {

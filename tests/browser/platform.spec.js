@@ -219,6 +219,7 @@ test('gallery and structured credits preserve the edited order', async ({ page }
 });
 
 test('homepage copy and SEO settings save through the console in both locales', async ({ page }, testInfo) => {
+  page.on('dialog', (dialog) => dialog.accept());
   await signIn(page);
   const original = await (await page.request.get('/api/admin/settings')).json();
   const { csrf } = await (await page.request.get('/api/admin/session')).json();
@@ -226,6 +227,9 @@ test('homepage copy and SEO settings save through the console in both locales', 
     const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
     if (await menu.isVisible()) await menu.click();
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    const stale = await page.context().newPage();
+    await stale.goto('/admin#settings');
+    await stale.getByLabel('Telephone', { exact: true }).waitFor();
     await page.getByLabel('Homepage social image', { exact: true }).fill('/assets/anchevlogo.png');
     await page.getByLabel('Exclude homepage from search indexing', { exact: true }).check();
     for (const language of ['en', 'el']) {
@@ -249,8 +253,23 @@ test('homepage copy and SEO settings save through the console in both locales', 
       expect(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
     await publicPage.close();
+    await stale.getByLabel('Telephone', { exact: true }).fill('Unsaved stale-tab number');
+    await stale.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect(stale.locator('[role="status"]').filter({ hasText: 'This entry changed' })).toBeVisible();
+    await expect(stale.getByLabel('Telephone', { exact: true })).toHaveValue('Unsaved stale-tab number');
+    expect((await (await page.request.get('/api/admin/settings')).json()).contact.phone).toBe(original.contact.phone);
+    await stale.close();
+    await page.getByRole('button', { name: 'Revisions', exact: true }).click();
+    await page.getByRole('button', { name: 'Restore settings', exact: true }).first().click();
+    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings restored.' })).toBeVisible();
+    await expect(page.getByLabel('Homepage social image', { exact: true })).toHaveValue(original.seo?.image || '');
+    await expect(page.getByLabel('Exclude homepage from search indexing', { exact: true })).toBeChecked({ checked: Boolean(original.seo?.noindex) });
+    const restored = await (await page.request.get('/api/admin/settings')).json();
+    expect(restored.homepage || {}).toEqual(original.homepage || {});
+    expect((await (await page.request.get('/api/admin/settings/revisions')).json()).revisions.length).toBeGreaterThanOrEqual(2);
   } finally {
-    const response = await page.request.post('/api/admin/settings', { headers: { 'x-csrf-token': csrf, origin: new URL(page.url()).origin }, data: { ...original, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } } });
+    const { version } = await (await page.request.get('/api/admin/settings')).json();
+    const response = await page.request.post('/api/admin/settings', { headers: { 'x-csrf-token': csrf, origin: new URL(page.url()).origin }, data: { ...original, version, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } } });
     expect(response.status()).toBe(200);
   }
 });

@@ -131,10 +131,19 @@ export const installAdminApi = (app, store) => {
     store.audit(req.user.id, 'article.delete', 'article', req.params.id);
     res.json({ articles: store.articles() });
   });
-  router.get('/settings', (_req, res) => res.json(store.settings()));
+  router.get('/settings', (_req, res) => res.json(store.adminSettings()));
   router.post('/settings', requirePermission('settings'), (req, res, next) => {
-    try { const settings = settingsSchema.parse(req.body); store.setSettings(settings, req.user.id); res.json(settings); }
+    try { const settings = settingsSchema.parse(req.body); const version = z.number().int().nonnegative().parse(req.body.version); res.json(store.setSettings(settings, req.user.id, version)); }
     catch (error) { next(error); }
+  });
+  router.get('/settings/revisions', (_req, res) => res.json({ revisions: store.db.prepare("SELECT id,actor_id,created_at FROM revisions WHERE entity_type='settings' AND entity_id='site' ORDER BY id DESC LIMIT 100").all() }));
+  router.post('/settings/revisions/:revision/restore', requirePermission('settings'), (req, res, next) => {
+    try {
+      const version = z.number().int().nonnegative().parse(req.body.version);
+      const revision = store.db.prepare("SELECT document FROM revisions WHERE id=? AND entity_type='settings' AND entity_id='site'").get(req.params.revision);
+      if (!revision) return res.status(404).json({ error: 'Settings revision not found.' });
+      res.json(store.setSettings(settingsSchema.parse(JSON.parse(revision.document)), req.user.id, version, 'settings.restore', true));
+    } catch (error) { next(error); }
   });
   router.get('/pages', (_req, res) => res.json({ pages: store.db.prepare('SELECT id,locale,version,updated_at,published IS NOT NULL AS isPublished FROM pages ORDER BY id,locale').all().map((row) => ({ ...store.page(row.id, row.locale), isPublished: Boolean(row.isPublished) })) }));
   router.post('/pages', write, (req, res, next) => {

@@ -35,7 +35,8 @@ test('homepage settings control localized copy, social metadata and indexing wit
     assert.equal(locations.includes(`${origin}/el/`), false);
     assert.ok(locations.includes(`${origin}/studio`));
   } finally {
-    const response = await fetch(`${origin}/api/admin/settings`, { method: 'POST', headers, body: JSON.stringify({ ...original, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } }) });
+    const { version } = await (await fetch(`${origin}/api/admin/settings`, { headers: { cookie } })).json();
+    const response = await fetch(`${origin}/api/admin/settings`, { method: 'POST', headers, body: JSON.stringify({ ...original, version, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } }) });
     assert.equal(response.status, 200);
   }
 });
