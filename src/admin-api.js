@@ -133,16 +133,24 @@ export const installAdminApi = (app, store) => {
   });
   router.get('/settings', (_req, res) => res.json(store.adminSettings()));
   router.post('/settings', requirePermission('settings'), (req, res, next) => {
-    try { const settings = settingsSchema.parse(req.body); const version = z.number().int().nonnegative().parse(req.body.version); res.json(store.setSettings(settings, req.user.id, version)); }
+    try { const settings = settingsSchema.parse(req.body); const version = z.number().int().nonnegative().parse(req.body.version); res.json(store.saveSettingsDraft(settings, req.user.id, version)); }
     catch (error) { next(error); }
   });
   router.get('/settings/revisions', (_req, res) => res.json({ revisions: store.db.prepare("SELECT id,actor_id,created_at FROM revisions WHERE entity_type='settings' AND entity_id='site' ORDER BY id DESC LIMIT 100").all() }));
+  router.post('/settings/publish', requirePermission('settings'), (req, res, next) => {
+    try { res.json(store.publishSettings(req.user.id, z.number().int().nonnegative().parse(req.body.version))); }
+    catch (error) { next(error); }
+  });
+  router.post('/settings/discard', requirePermission('settings'), (req, res, next) => {
+    try { res.json(store.discardSettingsDraft(req.user.id, z.number().int().nonnegative().parse(req.body.version))); }
+    catch (error) { next(error); }
+  });
   router.post('/settings/revisions/:revision/restore', requirePermission('settings'), (req, res, next) => {
     try {
       const version = z.number().int().nonnegative().parse(req.body.version);
       const revision = store.db.prepare("SELECT document FROM revisions WHERE id=? AND entity_type='settings' AND entity_id='site'").get(req.params.revision);
       if (!revision) return res.status(404).json({ error: 'Settings revision not found.' });
-      res.json(store.setSettings(settingsSchema.parse(JSON.parse(revision.document)), req.user.id, version, 'settings.restore', true));
+      res.json(store.saveSettingsDraft(settingsSchema.parse(JSON.parse(revision.document)), req.user.id, version, 'settings.draft.restore'));
     } catch (error) { next(error); }
   });
   router.get('/pages', (_req, res) => res.json({ pages: store.db.prepare('SELECT id,locale,version,updated_at,published IS NOT NULL AS isPublished FROM pages ORDER BY id,locale').all().map((row) => ({ ...store.page(row.id, row.locale), isPublished: Boolean(row.isPublished) })) }));

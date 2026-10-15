@@ -41,7 +41,7 @@ test('settings saves reject stale versions and restoration retains history witho
   assert.equal(changed.response.status, 200);
   assert.equal(changed.data.version, first.version + 1);
   assert.equal((await ownerClient.request('/settings', 'POST', first)).response.status, 409);
-  assert.equal(store.settings().contact.email, 'updated@example.com');
+  assert.equal(store.settings().contact.email, 'initial@example.com');
   assert.equal(Object.hasOwn(store.settings(), 'version'), false);
   assert.equal(Object.hasOwn(store.settings(), 'system.settings-version'), false);
   const revisions = (await ownerClient.request('/settings/revisions')).data.revisions;
@@ -55,7 +55,7 @@ test('settings saves reject stale versions and restoration retains history witho
   assert.equal((await ownerClient.request('/settings/revisions')).data.revisions.length, 2);
   const beforeFailure = store.adminSettings();
   const history = (await ownerClient.request('/settings/revisions')).data.revisions;
-  store.db.exec("CREATE TRIGGER settings_failure BEFORE INSERT ON settings WHEN NEW.key='contact' BEGIN SELECT RAISE(ABORT,'injected settings failure'); END;");
+  store.db.exec("CREATE TRIGGER settings_failure BEFORE INSERT ON settings WHEN NEW.key='system.settings-draft' BEGIN SELECT RAISE(ABORT,'injected settings failure'); END;");
   try {
     const failed = await ownerClient.request(`/settings/revisions/${history[0].id}/restore`, 'POST', { version: beforeFailure.version });
     assert.equal(failed.response.status, 500);
@@ -95,6 +95,37 @@ test('admin APIs reject anonymous requests and legacy shared-secret headers', as
   assert.equal(response.status, 401);
 });
 
+test('settings publication and discard are versioned transitions and keep drafts private', async () => {
+  const published = store.settings();
+  const original = (await ownerClient.request('/settings')).data;
+  const draft = await ownerClient.request('/settings', 'POST', { ...original, contact: { ...original.contact, phone: 'Private draft phone' } });
+  assert.equal(draft.response.status, 200);
+  assert.equal(draft.data.hasUnpublishedChanges, true);
+  assert.deepEqual(store.settings(), published);
+  assert.equal((await ownerClient.request('/settings/publish', 'POST', { version: original.version })).response.status, 409);
+  const beforeFailure = store.adminSettings();
+  const revisionCount = (await ownerClient.request('/settings/revisions')).data.revisions.length;
+  store.db.exec("CREATE TRIGGER publish_failure BEFORE INSERT ON settings WHEN NEW.key='contact' BEGIN SELECT RAISE(ABORT,'injected publication failure'); END;");
+  try {
+    assert.equal((await ownerClient.request('/settings/publish', 'POST', { version: draft.data.version })).response.status, 500);
+    assert.deepEqual(store.settings(), published);
+    assert.deepEqual(store.adminSettings(), beforeFailure);
+    assert.equal((await ownerClient.request('/settings/revisions')).data.revisions.length, revisionCount);
+  } finally { store.db.exec('DROP TRIGGER publish_failure'); }
+  const live = await ownerClient.request('/settings/publish', 'POST', { version: draft.data.version });
+  assert.equal(live.response.status, 200);
+  assert.equal(live.data.hasUnpublishedChanges, false);
+  assert.equal(store.settings().contact.phone, 'Private draft phone');
+  const next = await ownerClient.request('/settings', 'POST', { ...live.data, contact: { ...live.data.contact, phone: 'Discard this change' } });
+  assert.equal((await ownerClient.request('/settings/discard', 'POST', { version: live.data.version })).response.status, 409);
+  const discarded = await ownerClient.request('/settings/discard', 'POST', { version: next.data.version });
+  assert.equal(discarded.response.status, 200);
+  assert.equal(discarded.data.hasUnpublishedChanges, false);
+  assert.equal(store.settings().contact.phone, 'Private draft phone');
+  assert.equal(Object.hasOwn(store.settings(), 'system.settings-draft'), false);
+  assert.equal((await ownerClient.request('/settings/publish', 'POST', { version: discarded.data.version })).response.status, 409);
+});
+
 test('login regenerates sessions, sets HttpOnly cookies and requires CSRF', async () => {
   const browser = client();
   const login = await browser.login('owner@example.com');
@@ -118,6 +149,8 @@ test('editors can save drafts but cannot publish, delete or change settings', as
   assert.equal(forbidden.response.status, 403);
   assert.equal((await browser.request('/projects/editor-film', 'DELETE')).response.status, 403);
   assert.equal((await browser.request('/settings', 'POST', {})).response.status, 403);
+  assert.equal((await browser.request('/settings/publish', 'POST', { version: store.settingsVersion() })).response.status, 403);
+  assert.equal((await browser.request('/settings/discard', 'POST', { version: store.settingsVersion() })).response.status, 403);
   assert.equal((await browser.request('/settings/revisions/1/restore', 'POST', { version: store.settingsVersion() })).response.status, 403);
 });
 

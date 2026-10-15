@@ -22,6 +22,10 @@ test('homepage settings control localized copy, social metadata and indexing wit
   try {
     const response = await fetch(`${origin}/api/admin/settings`, { method: 'POST', headers, body: JSON.stringify({ ...original, homepage: { en: { heroPositioning: 'Custom English positioning' }, el: { heroPositioning: 'Custom Greek positioning' } }, seo: { title: 'Custom homepage title', description: 'A custom homepage description.', image: '/assets/anchevlogo.png', noindex: true } }) });
     assert.equal(response.status, 200);
+    const draft = await response.json();
+    assert.equal((await fetch(`${origin}/api/settings`)).status, 200);
+    assert.equal((await (await fetch(`${origin}/api/settings`)).json()).homepage?.en?.heroPositioning, original.homepage?.en?.heroPositioning);
+    assert.equal((await fetch(`${origin}/api/admin/settings/publish`, { method: 'POST', headers, body: JSON.stringify({ version: draft.version }) })).status, 200);
     for (const [route, text] of [['/', 'Custom English positioning'], ['/el/', 'Custom Greek positioning']]) {
       const $ = load(await (await fetch(`${origin}${route}`)).text());
       assert.equal($('.hero-positioning').text(), text);
@@ -38,6 +42,8 @@ test('homepage settings control localized copy, social metadata and indexing wit
     const { version } = await (await fetch(`${origin}/api/admin/settings`, { headers: { cookie } })).json();
     const response = await fetch(`${origin}/api/admin/settings`, { method: 'POST', headers, body: JSON.stringify({ ...original, version, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } }) });
     assert.equal(response.status, 200);
+    const draft = await response.json();
+    assert.equal((await fetch(`${origin}/api/admin/settings/publish`, { method: 'POST', headers, body: JSON.stringify({ version: draft.version }) })).status, 200);
   }
 });
 

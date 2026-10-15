@@ -8,14 +8,14 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: { baseURL: 'http://127.0.0.1:3012', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['iPhone 13'], defaultBrowserType: 'chromium' } }
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:3012' } },
+    { name: 'mobile', use: { ...devices['iPhone 13'], defaultBrowserType: 'chromium', baseURL: 'http://127.0.0.1:3013' } }
   ],
-  webServer: {
+  webServer: [3012, 3013].map((port) => ({
     command: 'npm run preview',
-    env: { PORT: '3012', MEDIA_WORKER: '0', PODCAST_FEED_URL: 'http://127.0.0.1:1/unavailable', PREVIEW_DATA_DIR: '' },
-    url: 'http://127.0.0.1:3012/health',
+    env: { PORT: String(port), MEDIA_WORKER: '0', PODCAST_FEED_URL: 'http://127.0.0.1:1/unavailable', PREVIEW_DATA_DIR: '' },
+    url: `http://127.0.0.1:${port}/health`,
     reuseExistingServer: false,
     timeout: 30000
-  }
+  }))
 });

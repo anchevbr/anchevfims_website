@@ -236,7 +236,7 @@ export class ContentStore {
   }
 
   settings() {
-    const rows = this.db.prepare("SELECT key,value FROM settings WHERE key NOT LIKE 'migration.%' AND key!='system.settings-version'").all();
+    const rows = this.db.prepare("SELECT key,value FROM settings WHERE key NOT LIKE 'migration.%' AND key NOT LIKE 'system.settings-%'").all();
     return Object.fromEntries(rows.map((row) => [row.key, parse(row.value)]));
   }
 
@@ -244,7 +244,50 @@ export class ContentStore {
     return parse(this.db.prepare("SELECT value FROM settings WHERE key='system.settings-version'").get()?.value, 0);
   }
 
-  adminSettings() { return { ...this.settings(), version: this.settingsVersion() }; }
+  adminSettings() {
+    const draft = parse(this.db.prepare("SELECT value FROM settings WHERE key='system.settings-draft'").get()?.value);
+    return { ...(draft || this.settings()), version: this.settingsVersion(), hasUnpublishedChanges: Boolean(draft) };
+  }
+
+  saveSettingsDraft(settings, actor, version, action = 'settings.draft.save') {
+    return this.db.transaction(() => {
+      if (version !== this.settingsVersion()) throw conflict();
+      const { version: previousVersion, hasUnpublishedChanges, ...current } = this.adminSettings();
+      this.db.prepare('INSERT INTO revisions(entity_type,entity_id,document,actor_id,created_at) VALUES (?,?,?,?,?)').run('settings', 'site', JSON.stringify(current), actor, now());
+      const statement = this.db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
+      statement.run('system.settings-draft', JSON.stringify(settings));
+      statement.run('system.settings-version', JSON.stringify(version + 1));
+      this.syncUsage('settings', 'site-draft', settings);
+      this.audit(actor, action, 'settings', 'site');
+      return this.adminSettings();
+    })();
+  }
+
+  publishSettings(actor, version) {
+    return this.db.transaction(() => {
+      if (version !== this.settingsVersion()) throw conflict();
+      const draft = parse(this.db.prepare("SELECT value FROM settings WHERE key='system.settings-draft'").get()?.value);
+      if (!draft) throw Object.assign(new Error('No saved settings draft to publish.'), { status: 409 });
+      this.setSettings(draft, actor, version, 'settings.publish', true);
+      this.db.prepare("DELETE FROM settings WHERE key='system.settings-draft'").run();
+      this.db.prepare("DELETE FROM media_usage WHERE entity_type='settings' AND entity_id='site-draft'").run();
+      return this.adminSettings();
+    })();
+  }
+
+  discardSettingsDraft(actor, version) {
+    return this.db.transaction(() => {
+      if (version !== this.settingsVersion()) throw conflict();
+      const draft = parse(this.db.prepare("SELECT value FROM settings WHERE key='system.settings-draft'").get()?.value);
+      if (!draft) throw Object.assign(new Error('No saved settings draft to discard.'), { status: 409 });
+      this.db.prepare('INSERT INTO revisions(entity_type,entity_id,document,actor_id,created_at) VALUES (?,?,?,?,?)').run('settings', 'site', JSON.stringify(draft), actor, now());
+      this.db.prepare("DELETE FROM settings WHERE key='system.settings-draft'").run();
+      this.db.prepare("UPDATE settings SET value=? WHERE key='system.settings-version'").run(JSON.stringify(version + 1));
+      this.db.prepare("DELETE FROM media_usage WHERE entity_type='settings' AND entity_id='site-draft'").run();
+      this.audit(actor, 'settings.draft.discard', 'settings', 'site');
+      return this.adminSettings();
+    })();
+  }
 
   setSettings(settings, actor = null, version, action = 'settings.save', replace = false) {
     return this.db.transaction(() => {
@@ -254,7 +297,7 @@ export class ContentStore {
       const merged = replace ? settings : { ...current, ...settings };
       if (!actor && JSON.stringify(current) === JSON.stringify(merged)) return this.adminSettings();
       if (actor) this.db.prepare('INSERT INTO revisions(entity_type,entity_id,document,actor_id,created_at) VALUES (?,?,?,?,?)').run('settings', 'site', JSON.stringify(current), actor, now());
-      if (replace) this.db.prepare("DELETE FROM settings WHERE key NOT LIKE 'migration.%' AND key!='system.settings-version'").run();
+      if (replace) this.db.prepare("DELETE FROM settings WHERE key NOT LIKE 'migration.%' AND key NOT LIKE 'system.settings-%'").run();
       const statement = this.db.prepare('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
       Object.entries(settings).forEach(([key, value]) => statement.run(key, JSON.stringify(value)));
       statement.run('system.settings-version', JSON.stringify(currentVersion + 1));

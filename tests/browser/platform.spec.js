@@ -222,6 +222,7 @@ test('homepage copy and SEO settings save through the console in both locales', 
   page.on('dialog', (dialog) => dialog.accept());
   await signIn(page);
   const original = await (await page.request.get('/api/admin/settings')).json();
+  const publishedBefore = await (await page.request.get('/api/settings')).json();
   const { csrf } = await (await page.request.get('/api/admin/session')).json();
   try {
     const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
@@ -237,12 +238,16 @@ test('homepage copy and SEO settings save through the console in both locales', 
       await page.locator(`#panel-home-${language}`).getByLabel('Opening introduction', { exact: true }).fill(`${language} opening ${testInfo.project.name}`);
       await page.locator(`#panel-home-${language}`).getByLabel('Services introduction', { exact: true }).fill(`${language} services ${testInfo.project.name}`);
     }
-    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
-    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings saved.' })).toBeVisible();
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings draft saved.' })).toBeVisible();
+    expect(await (await page.request.get('/api/settings')).json()).toEqual(publishedBefore);
     await page.reload();
     await page.getByRole('tab', { name: 'Business', exact: true }).waitFor();
     await expect(page.getByLabel('Homepage social image', { exact: true })).toHaveValue('/assets/anchevlogo.png');
     await expect(page.getByLabel('Exclude homepage from search indexing', { exact: true })).toBeChecked();
+    await page.getByRole('button', { name: 'Publish settings', exact: true }).click();
+    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings published.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Publish settings', exact: true })).toHaveCount(0);
     const publicPage = await page.context().newPage();
     for (const language of ['en', 'el']) {
       await publicPage.goto(language === 'en' ? '/' : '/el/');
@@ -254,22 +259,31 @@ test('homepage copy and SEO settings save through the console in both locales', 
     }
     await publicPage.close();
     await stale.getByLabel('Telephone', { exact: true }).fill('Unsaved stale-tab number');
-    await stale.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await stale.getByRole('button', { name: 'Save draft', exact: true }).click();
     await expect(stale.locator('[role="status"]').filter({ hasText: 'This entry changed' })).toBeVisible();
     await expect(stale.getByLabel('Telephone', { exact: true })).toHaveValue('Unsaved stale-tab number');
     expect((await (await page.request.get('/api/admin/settings')).json()).contact.phone).toBe(original.contact.phone);
     await stale.close();
+    const publishedAfter = await (await page.request.get('/api/settings')).json();
     await page.getByRole('button', { name: 'Revisions', exact: true }).click();
     await page.getByRole('button', { name: 'Restore settings', exact: true }).first().click();
-    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings restored.' })).toBeVisible();
+    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings restored as a draft.' })).toBeVisible();
     await expect(page.getByLabel('Homepage social image', { exact: true })).toHaveValue(original.seo?.image || '');
     await expect(page.getByLabel('Exclude homepage from search indexing', { exact: true })).toBeChecked({ checked: Boolean(original.seo?.noindex) });
     const restored = await (await page.request.get('/api/admin/settings')).json();
     expect(restored.homepage || {}).toEqual(original.homepage || {});
+    expect(await (await page.request.get('/api/settings')).json()).toEqual(publishedAfter);
     expect((await (await page.request.get('/api/admin/settings/revisions')).json()).revisions.length).toBeGreaterThanOrEqual(2);
+    await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
+    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings draft discarded.' })).toBeVisible();
+    await expect(page.getByLabel('Homepage social image', { exact: true })).toHaveValue('/assets/anchevlogo.png');
+    expect(await (await page.request.get('/api/settings')).json()).toEqual(publishedAfter);
   } finally {
     const { version } = await (await page.request.get('/api/admin/settings')).json();
     const response = await page.request.post('/api/admin/settings', { headers: { 'x-csrf-token': csrf, origin: new URL(page.url()).origin }, data: { ...original, version, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } } });
     expect(response.status()).toBe(200);
+    const draft = await response.json();
+    const published = await page.request.post('/api/admin/settings/publish', { headers: { 'x-csrf-token': csrf, origin: new URL(page.url()).origin }, data: { version: draft.version } });
+    expect(published.status()).toBe(200);
   }
 });

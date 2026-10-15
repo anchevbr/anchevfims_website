@@ -76,3 +76,19 @@ test('inquiry retention configuration rejects invalid or unbounded durations', (
   assert.equal(parseInquiryRetentionDays('30'), 30);
   for (const value of ['NaN', '0', '-1', '1.5', '3651', 'Infinity']) assert.throws(() => parseInquiryRetentionDays(value), /INQUIRY_RETENTION_DAYS/);
 });
+
+test('settings drafts survive database reopening and unchanged startup seeding', async () => {
+  const { store, directory, cleanup } = await fixture();
+  let reopened;
+  try {
+    const published = { contact: { email: 'public@example.com', phone: 'Published phone', location: 'Athens' } };
+    store.setSettings(published);
+    const draft = store.saveSettingsDraft({ contact: { ...published.contact, phone: 'Private draft phone' } }, null, store.settingsVersion());
+    reopened = new ContentStore(directory);
+    reopened.setSettings(reopened.settings());
+    assert.deepEqual(reopened.settings(), published);
+    assert.equal(reopened.adminSettings().contact.phone, 'Private draft phone');
+    assert.equal(reopened.adminSettings().hasUnpublishedChanges, true);
+    assert.equal(reopened.settingsVersion(), draft.version);
+  } finally { reopened?.close(); await cleanup(); }
+});
