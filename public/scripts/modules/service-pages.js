@@ -123,10 +123,27 @@ const studio = {
 };
 
 export const servicePages = services;
+export const getSiteContentPath = (id, language = 'en') => {
+  const prefix = language === 'el' ? '/el' : '';
+  if (id === 'studio') return `${prefix}/studio`;
+  if (id === 'contact') return `${prefix}/`;
+  const service = services.find((entry) => id === `service-${entry.slug}`);
+  return service ? `${prefix}/services/${service.slug}` : null;
+};
 export const getServicePath = (page, language = 'en') => `${language === 'el' ? '/el' : ''}${page.isStudio ? '/studio' : `/services/${page.slug}`}`;
-export const getServicePage = (pathname) => [...services, studio].find((page) =>
-  getServicePath(page, 'en') === pathname || getServicePath(page, 'el') === pathname
-);
+export const getServicePage = (pathname, managed = null) => {
+  const page = [...services, studio].find((entry) => getServicePath(entry, 'en') === pathname || getServicePath(entry, 'el') === pathname);
+  if (!page || !managed) return page;
+  const language = pathname.startsWith('/el/') ? 'el' : 'en';
+  const hero = managed.blocks.find((block) => block.type === 'image');
+  return { ...page, heroImage: hero?.url, heroAlt: hero?.alt,
+    mediaBlocks: managed.blocks.filter((block) => block.type !== 'text' && block.type !== 'fact' && block !== hero),
+    seo: managed.seo,
+    [language]: { ...page[language], title: managed.heading, intro: managed.intro,
+      description: managed.seo?.description || managed.intro,
+      sections: managed.blocks.filter((block) => block.type === 'text').map((block) => [block.title, block.text]),
+      brief: managed.body } };
+};
 export const getLanguageAlternates = (page) => ['en', 'el'].map((language) => ({ language, path: getServicePath(page, language) }));
 
 export const renderServiceLinks = (language = 'en', currentSlug = '') => services
@@ -146,12 +163,13 @@ export const renderServicePageMarkup = (page, language, projects, contact) => {
       </header>
       <main>
         <section class="case-study__hero" aria-labelledby="service-title">
-          <div class="case-study__hero-media"><img src="/media/studio/studio-frame-01.jpg" alt="${greek ? 'Εσωτερικό του Anchev Studio στα Μελίσσια' : 'Inside Anchev Studio in Melissia'}" fetchpriority="high" /></div>
+          <div class="case-study__hero-media"><img src="${escapeHtml(page.heroImage || '/media/studio/studio-frame-01.jpg')}" alt="${escapeHtml(page.heroAlt || (greek ? 'Εσωτερικό του Anchev Studio στα Μελίσσια' : 'Inside Anchev Studio in Melissia'))}" fetchpriority="high" /></div>
           <div class="case-study__hero-content"><p class="case-study__meta">Anchev Films / ${greek ? 'Αθήνα, Ελλάδα' : 'Athens, Greece'}</p><h1 id="service-title">${escapeHtml(copy.title)}</h1></div>
         </section>
         <div class="case-study__content">
           <p>${escapeHtml(copy.intro)}</p>
           ${copy.sections.map(([title, text], index) => `<section class="case-study__copy-section"><p class="case-study__section-label">0${index + 1}</p><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></div></section>`).join('')}
+          ${(page.mediaBlocks || []).map((block) => block.type === 'image' ? `<figure><img src="${escapeHtml(block.url)}" alt="${escapeHtml(block.alt)}" loading="lazy" />${block.text ? `<figcaption>${escapeHtml(block.text)}</figcaption>` : ''}</figure>` : block.type === 'video' ? `<video src="${escapeHtml(block.url)}" controls playsinline preload="none" aria-label="${escapeHtml(block.title || copy.title)}"></video>` : `<p><a class="case-study__external" href="${escapeHtml(block.url)}">${escapeHtml(block.title || block.url)}</a></p>`).join('')}
           ${example ? `<section class="case-study__copy-section"><p class="case-study__section-label">${greek ? 'Παραγωγή' : 'Production example'}</p><div><h2>${escapeHtml(example.name)}</h2><p>${greek ? 'Ανεξάρτητη ταινία κατά του σχολικού εκφοβισμού, με μαθητές του 56ου Γυμνασίου Αθηνών. Δείτε την προετοιμασία, την παραγωγή και τους συντελεστές.' : 'An independent anti-bullying film made with students of the 56th Junior High School of Athens. Explore the brief, production approach and credits.'}</p><a class="case-study__external" href="/work/${encodeURIComponent(example.id)}">${greek ? 'Δείτε την παραγωγή' : 'Explore the production'}</a></div></section>` : ''}
           ${page.isStudio ? '<a class="case-study__external" href="https://www.google.com/maps/dir/?api=1&amp;destination=Apostolou%20Rapti%205%2C%20Melissia%20151%2027%2C%20Greece" target="_blank" rel="noreferrer">Google Maps</a>' : `<a class="case-study__external" href="${greek ? '/el/studio' : '/studio'}">${greek ? 'Anchev Studio στα Μελίσσια' : 'Anchev Studio in Melissia'}</a>`}
           <section class="case-study__copy-section"><p class="case-study__section-label">${greek ? 'Το έργο σας' : 'Your brief'}</p><div><h2>${greek ? 'Ας συζητήσουμε την παραγωγή σας' : 'Discuss your production'}</h2><p>${escapeHtml(copy.brief)}</p>${contact.email ? `<a class="case-study__external" href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>` : '<a class="case-study__external" href="/#contact-page">Contact Anchev Films</a>'}${contact.phone ? `<a class="case-study__external" href="tel:${escapeHtml(contact.phone.replace(/[^+\d]/g, ''))}">${escapeHtml(contact.phone)}</a>` : ''}</div></section>

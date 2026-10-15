@@ -206,7 +206,9 @@ const mediaDetails = async (id) => {
   const poster = asset.derivatives.find((entry) => entry.kind === 'poster')?.url;
   const image = asset.mime.startsWith('image/') ? asset.url : poster;
   const metadata = asset.metadata;
+  const versions = asset.url.startsWith('/uploads/') ? (await api(`/media/${encodeURIComponent(asset.id)}/history`)).versions : [];
   showDialog(asset.filename, `${asset.mime.startsWith('video/') && asset.url.startsWith('/') ? `<video class="media-detail-preview" src="${escapeHtml(asset.url)}" controls playsinline preload="none" ${poster ? `poster="${escapeHtml(poster)}"` : ''}></video>` : image ? `<img class="media-detail-preview" src="${escapeHtml(image)}" alt="${escapeHtml(metadata.alt?.en || '')}" />` : ''}<p class="subtle">${escapeHtml(asset.mime)} / ${size(asset.bytes)} / ${asset.usage.length} references</p>${asset.error ? `<p class="login-error">${escapeHtml(asset.error)}</p>` : ''}<form id="media-metadata-form"><div class="form-grid">${field('Title', 'title', metadata.title)}${field('Collection', 'collection', metadata.collection)}${field('English alt text', 'alt.en', metadata.alt?.en)}${field('Greek alt text', 'alt.el', metadata.alt?.el)}${field('Tags', 'tags', (metadata.tags || []).join(', '))}${field('Rights / licence', 'rights', metadata.rights)}${field('Attribution', 'attribution', metadata.attribution, { wide: true })}</div><h3>Original</h3><input aria-label="Original URL" value="${escapeHtml(asset.url)}" readonly /><h3>Derivatives</h3>${asset.derivatives.length ? asset.derivatives.map((entry) => `<p class="subtle"><a href="${escapeHtml(entry.url)}" target="_blank" rel="noreferrer">${escapeHtml(entry.kind)}</a> / ${size(entry.bytes)}</p>`).join('') : '<p class="subtle">No derivatives yet.</p>'}<div class="form-footer">${asset.status === 'failed' && can('media') ? button('Retry processing', 'rotate-cw', `data-retry-media="${asset.id}"`) : ''}${can('media') ? '<button type="submit" class="button button--primary">Save metadata</button>' : ''}</div></form>${can('media') && asset.url.startsWith('/uploads/') ? `<div class="form-section"><label class="button" for="media-replace">${icon('replace')}Replace original</label><input id="media-replace" type="file" accept="${escapeHtml(asset.mime)}" hidden /></div>` : ''}`);
+  if (versions.length) dialog.querySelector('#media-metadata-form').insertAdjacentHTML('afterend', `<section class="form-section"><h3>Original versions</h3><div class="table-wrap"><table><thead><tr><th>Saved</th><th>Checksum</th><th></th></tr></thead><tbody>${versions.map((version) => `<tr><td>${date(version.createdAt)}</td><td>${escapeHtml(version.checksum.slice(0, 12))}</td><td>${can('media') ? button('Restore original', 'rotate-ccw', `data-restore-original="${escapeHtml(version.id)}"`) : ''}</td></tr>`).join('')}</tbody></table></div></section>`);
 };
 const mediaPicker = async (target) => {
   state.picker = target;
@@ -216,11 +218,11 @@ const mediaPicker = async (target) => {
 
 const pagesView = async () => {
   state.pages = (await api('/pages')).pages;
-  return `${heading('Pages', can('write') ? button('New page', 'plus', 'data-new-page', true) : '')}${state.pages.length ? `<div class="table-wrap"><table><thead><tr><th>Page</th><th>Language</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>${state.pages.map((page) => `<tr><td>${escapeHtml(page.heading)}</td><td>${page.locale.toUpperCase()}</td><td>${badge(page.isPublished ? 'published' : 'draft')}</td><td>${date(page.updatedAt)}</td><td>${iconButton('Edit page', 'pencil', `data-edit-page="${page.locale}:${page.id}"`)}</td></tr>`).join('')}</tbody></table></div>` : empty('No custom pages yet.')}`;
+  return `${heading('Pages', can('write') ? `${button('Site content', 'panels-top-left', 'data-site-content')}${button('New page', 'plus', 'data-new-page', true)}` : '')}${state.pages.length ? `<div class="table-wrap"><table><thead><tr><th>Page</th><th>Language</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>${state.pages.map((page) => `<tr><td>${escapeHtml(page.heading)}</td><td>${page.locale.toUpperCase()}</td><td>${badge(page.isPublished ? 'published' : 'draft')}</td><td>${date(page.updatedAt)}</td><td>${iconButton('Edit page', 'pencil', `data-edit-page="${page.locale}:${page.id}"`)}</td></tr>`).join('')}</tbody></table></div>` : empty('No custom pages yet.')}`;
 };
 const pageEditor = (page = {}) => {
   state.page = page;
-  const actions = `${button('Back', 'arrow-left', 'data-view="pages"')}${page.id ? button('Preview', 'eye', 'data-preview-page') + button('Revisions', 'history', 'data-page-revisions') : ''}`;
+  const actions = `${button('Back', 'arrow-left', 'data-view="pages"')}${page.version ? button('Preview', 'eye', 'data-preview-page') + button('Revisions', 'history', 'data-page-revisions') : ''}`;
   return `${heading(page.heading || 'New page', actions, `Pages / ${page.isPublished ? 'published' : 'draft'}`)}
   <form id="page-form"><div class="form-grid">
     ${field('Page title', 'heading', page.heading, { required: true })}${field('URL identifier', 'id', page.id, { required: true })}
@@ -230,7 +232,7 @@ const pageEditor = (page = {}) => {
     ${field('Social image', 'seo.image', page.seo?.image, { asset: true })}${checkbox('Exclude from search indexing', 'seo.noindex', page.seo?.noindex)}
   </div><section class="form-section"><h2>Content blocks</h2><div id="page-blocks">${(page.blocks || []).map(blockRow).join('')}</div>${can('write') ? button('Add block', 'plus', 'data-add-block') : ''}</section>
   <footer class="form-footer"><span id="page-save-state" class="save-state">${page.version ? `Version ${page.version}` : 'Not saved'}</span>${can('write') ? `<button class="button" type="submit">${icon('save')}Save draft</button>` : ''}${can('publish') ? button('Publish', 'send', 'data-publish-page', true) : ''}${can('publish') && page.isPublished ? button('Unpublish', 'archive', 'data-unpublish-page') : ''}</footer></form>
-  ${can('publish') && page.id ? `<section class="form-section">${button('Delete page', 'trash-2', 'data-delete-page')}</section>` : ''}`;
+  ${can('publish') && page.version ? `<section class="form-section">${button('Delete page', 'trash-2', 'data-delete-page')}</section>` : ''}`;
 };
 const showPageEditor = (page = {}) => {
   document.getElementById('console-main').innerHTML = pageEditor(page);
@@ -238,7 +240,7 @@ const showPageEditor = (page = {}) => {
   if (!can('write')) document.querySelectorAll('#page-form input,#page-form textarea,#page-form select').forEach((input) => { input.disabled = true; });
   refreshIcons();
 };
-const blockRow = (block = {}) => `<div class="block-row" data-block><select aria-label="Block type" name="block-type"><option value="text">Text</option>${['image', 'video', 'link'].map((type) => `<option value="${type}" ${block.type === type ? 'selected' : ''}>${type[0].toUpperCase() + type.slice(1)}</option>`).join('')}</select><div class="block-content"><input name="block-title" aria-label="Block title" value="${escapeHtml(block.title)}" placeholder="Title" /><textarea name="block-text" aria-label="Block text" placeholder="Text">${escapeHtml(block.text)}</textarea><input name="block-url" aria-label="Block URL" value="${escapeHtml(block.url)}" placeholder="Media or link URL" /><input name="block-alt" aria-label="Image alt text" value="${escapeHtml(block.alt)}" placeholder="Alt text" /></div><div class="actions">${iconButton('Move block up', 'arrow-up', 'data-block-up')}${iconButton('Move block down', 'arrow-down', 'data-block-down')}${iconButton('Remove block', 'trash-2', 'data-remove-block')}</div></div>`;
+const blockRow = (block = {}) => `<div class="block-row" data-block><select aria-label="Block type" name="block-type"><option value="text">Text</option>${['image', 'video', 'link', 'fact'].map((type) => `<option value="${type}" ${block.type === type ? 'selected' : ''}>${type[0].toUpperCase() + type.slice(1)}</option>`).join('')}</select><div class="block-content"><input name="block-title" aria-label="Block title" value="${escapeHtml(block.title)}" placeholder="Title" /><textarea name="block-text" aria-label="Block text" placeholder="Text">${escapeHtml(block.text)}</textarea><input name="block-url" aria-label="Block URL" value="${escapeHtml(block.url)}" placeholder="Media or link URL" /><input name="block-alt" aria-label="Image alt text" value="${escapeHtml(block.alt)}" placeholder="Alt text" /></div><div class="actions">${iconButton('Move block up', 'arrow-up', 'data-block-up')}${iconButton('Move block down', 'arrow-down', 'data-block-down')}${iconButton('Remove block', 'trash-2', 'data-remove-block')}</div></div>`;
 const savePage = async (publish = false) => {
   const form = document.getElementById('page-form');
   const values = Object.fromEntries(new FormData(form));
@@ -362,6 +364,19 @@ document.addEventListener('click', async (event) => {
     if (target.hasAttribute('data-retry-media')) { await api(`/media/${target.dataset.retryMedia}/retry`, 'POST'); dialog.close(); await navigate('media', true); notify('Processing queued.'); }
     if (target.hasAttribute('data-bulk-delete') && state.selected.size && confirm(`Delete ${state.selected.size} selected assets? Referenced media will be preserved.`)) { for (const id of state.selected) { try { await api(`/media/${id}`, 'DELETE'); } catch (error) { notify(error.message, true); } } state.selected.clear(); await navigate('media', true); }
     if (target.hasAttribute('data-bulk-collection') && state.selected.size) showDialog('Collection', `<form id="collection-form">${field('Collection name', 'collection', '', { required: true })}<footer class="form-footer"><button class="button button--primary" type="submit">Apply to selection</button></footer></form>`);
+    if (target.hasAttribute('data-restore-original') && confirm('Restore this retained original? Current files will be retained and derivatives will be regenerated.')) {
+      await api(`/media/${encodeURIComponent(state.asset.id)}/restore`, 'POST', { version: target.dataset.restoreOriginal, checksum: state.asset.checksum });
+      dialog.close(); await navigate('media', true); notify('Original restored. Processing is queued.');
+    }
+    if (target.hasAttribute('data-site-content')) {
+      const data = await api('/page-templates'); state.siteTemplates = data.pages;
+      showDialog('Site content', `<div class="actions">${data.pages.map((page, index) => button(`${page.heading} / ${page.locale.toUpperCase()}`, 'pencil', `data-site-template="${index}"`)).join('')}</div>`);
+    }
+    if (target.hasAttribute('data-site-template')) {
+      const template = state.siteTemplates[Number(target.dataset.siteTemplate)];
+      const existing = state.pages.find((page) => page.id === template.id && page.locale === template.locale);
+      dialog.close(); state.dirty = false; showPageEditor(existing || template);
+    }
     if (target.hasAttribute('data-new-page')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; state.dirty = false; state.view = 'pages'; shell(); showPageEditor(); }
     if (target.hasAttribute('data-edit-page')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; const page = state.pages.find((entry) => `${entry.locale}:${entry.id}` === target.dataset.editPage); state.dirty = false; showPageEditor(page); }
     if (target.hasAttribute('data-add-block')) { document.getElementById('page-blocks').insertAdjacentHTML('beforeend', blockRow()); document.getElementById('page-blocks').dispatchEvent(new Event('input', { bubbles: true })); refreshIcons(); }

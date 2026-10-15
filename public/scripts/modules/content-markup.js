@@ -100,7 +100,8 @@ const getYouTubeId = (source) => {
   }
 };
 
-export const renderProjectFilmMarkup = (source, poster, title) => {
+export const renderProjectFilmMarkup = (source, poster, title, language) => {
+  const words = copy(language);
   const videoId = getYouTubeId(source);
   const image = safeAssetUrl(poster);
   const video = safeAssetUrl(source);
@@ -108,12 +109,12 @@ export const renderProjectFilmMarkup = (source, poster, title) => {
   return `<section class="case-study__film" aria-label="${escapeHtml(title)}">
     <h2>${escapeHtml(title)}</h2>
     <div class="case-study__player">
-      ${videoId ? `<button class="case-study__play" type="button" data-youtube-id="${videoId}" data-film-title="${escapeHtml(title)}" aria-label="Play ${escapeHtml(title)}">
+      ${videoId ? `<button class="case-study__play" type="button" data-youtube-id="${videoId}" data-film-title="${escapeHtml(title)}" aria-label="${words.play} ${escapeHtml(title)}">
         ${image ? `<img src="${escapeHtml(image)}" alt="" loading="lazy" />` : ''}
         <span class="case-study__play-icon" aria-hidden="true">&#9654;</span>
       </button>` : `<video src="${escapeHtml(video)}"${image ? ` poster="${escapeHtml(image)}"` : ''} controls playsinline preload="none"></video>`}
     </div>
-    ${videoId ? `<a class="case-study__external" href="https://www.youtube.com/watch?v=${videoId}" target="_blank" rel="noreferrer">Watch on YouTube</a>` : ''}
+    ${videoId ? `<a class="case-study__external" href="https://www.youtube.com/watch?v=${videoId}" target="_blank" rel="noreferrer">${words.watchYoutube}</a>` : ''}
   </section>`;
 };
 
@@ -133,12 +134,13 @@ export const setupProjectFilmPlayers = (root) => {
   });
 };
 
-export const renderProjectSupportingMarkup = (project) => {
+export const renderProjectSupportingMarkup = (project, language) => {
+  const words = copy(language);
   const pressLink = safeExternalUrl(project.pressLink);
-  return `${renderProjectFilmMarkup(project.behindVideo, project.behindFrame, 'Behind the Scenes')}
+  return `${renderProjectFilmMarkup(project.behindVideo, project.behindFrame, words.behind, language)}
     ${pressLink ? `<section class="case-study__copy-section">
-      <p class="case-study__section-label">In the Press</p>
-      <div><h2>In the press.</h2><a class="case-study__external" href="${escapeHtml(pressLink)}" target="_blank" rel="noreferrer">${escapeHtml(project.pressTitle || 'Read the coverage')}</a></div>
+      <p class="case-study__section-label">${words.press}</p>
+      <div><h2>${words.press}.</h2><a class="case-study__external" href="${escapeHtml(pressLink)}" target="_blank" rel="noreferrer">${escapeHtml(project.pressTitle || words.readCoverage)}</a></div>
     </section>` : ''}`;
 };
 
@@ -217,7 +219,23 @@ export const renderProjectPageMarkup = (project, projects, description) => {
   </article>`;
 };
 
-export const renderStudioPageMarkup = (visuals = []) => {
+export const renderStudioPageMarkup = (visuals = [], managed = null, language = 'en') => {
+  if (managed) {
+    const greek = language === 'el';
+    const images = managed.blocks.filter((block) => block.type === 'image' && block.url);
+    const film = managed.blocks.find((block) => block.type === 'video' && block.url);
+    const poster = images[0]?.url || '/media/experience/studio-poster.jpg';
+    const home = greek ? '/el/' : '/';
+    return `<article class="case-study case-study--standalone studio-page is-open"><div class="case-study__shell">
+      <header class="case-study__header"><p class="case-study__running-title">Anchev Films / ${greek ? 'Το στούντιο' : 'Our studio'}</p><a class="case-study__close" href="${home}">${greek ? 'Επιστροφή στην Anchev Films' : 'Back to Anchev Films'}</a></header>
+      <main><section class="case-study__hero" aria-labelledby="studio-title"><div class="case-study__hero-media">${film ? `<video class="studio-feature__video" muted loop playsinline preload="none" poster="${escapeHtml(poster)}" aria-hidden="true" tabindex="-1"><source data-src="${escapeHtml(film.url)}" /></video>` : `<img src="${escapeHtml(poster)}" alt="${escapeHtml(images[0]?.alt || '')}" fetchpriority="high" />`}</div><div class="case-study__hero-content"><p class="case-study__meta">Anchev Films / ${greek ? 'Αθήνα' : 'Athens'}</p><h1 id="studio-title">${escapeHtml(managed.heading)}</h1></div></section>
+      <div class="case-study__content"><p>${escapeHtml(managed.intro).replace(/\n/g, '<br />')}</p>
+      <dl class="case-study__details" aria-label="${greek ? 'Στοιχεία στούντιο' : 'Studio facts'}">${managed.blocks.filter((block) => block.type === 'fact').map((block) => `<div class="case-study__detail"><dt>${escapeHtml(block.title)}</dt><dd>${escapeHtml(block.text)}</dd></div>`).join('')}</dl>
+      ${managed.blocks.filter((block) => block.type === 'text').map((block, index) => `<section class="case-study__copy-section"><p class="case-study__section-label">${String(index + 1).padStart(2, '0')}</p><div><h2>${escapeHtml(block.title)}</h2><p>${escapeHtml(block.text).replace(/\n/g, '<br />')}</p></div></section>`).join('')}
+      <section class="case-study__frames" aria-label="${greek ? 'Εικόνες στούντιο' : 'Studio images'}">${images.slice(1).map((block) => `<figure><img src="${escapeHtml(block.url)}" alt="${escapeHtml(block.alt)}" loading="lazy" />${block.text ? `<figcaption>${escapeHtml(block.text)}</figcaption>` : ''}</figure>`).join('')}</section>
+      ${managed.blocks.filter((block) => block.type === 'link').map((block) => `<p><a class="case-study__external" href="${escapeHtml(block.url)}">${escapeHtml(block.title || block.url)}</a></p>`).join('')}
+      <section class="case-study__copy-section"><div><h2>${greek ? 'Η παραγωγή σας' : 'Your production'}</h2><p>${escapeHtml(managed.body).replace(/\n/g, '<br />')}</p><a class="case-study__external" href="${home}#contact-page">${greek ? 'Επικοινωνήστε μαζί μας' : 'Enquire about the studio'}</a></div></section></div></main></div></article>`;
+  }
   const capabilities = [
     ['Room for the bigger idea', 'With a width of 12 metres, a depth of 16 metres and a height of 5 metres, the studio offers an approximate 192-square-metre footprint for ambitious setups. The space is large enough to bring a car inside. Share your vehicle and set requirements so we can confirm access and layout before the shoot.'],
     ['A simpler load-in', 'Truck access reaches the studio entrance, bringing equipment and production deliveries right to the point of arrival. Loading arrangements can be coordinated around your production schedule.'],
@@ -285,26 +303,27 @@ export const renderClientsMarkup = (clients) => (Array.isArray(clients) ? client
   .map((client) => `<button class="client-mark" type="button" aria-current="false"><span class="client-mark__name">${escapeHtml(client)}</span></button>`)
   .join('');
 
-const dateFormatter = new Intl.DateTimeFormat('en', {
+const dateFormatters = Object.fromEntries(['en', 'el'].map((language) => [language, new Intl.DateTimeFormat(language, {
   day: 'numeric',
   month: 'short',
   year: 'numeric'
-});
+})]));
 
-const formatDate = (value) => {
+const formatDate = (value, language = 'en') => {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : dateFormatter.format(date);
+  return Number.isNaN(date.getTime()) ? '' : (dateFormatters[language] || dateFormatters.en).format(date);
 };
 
-export const renderArticlesMarkup = (articles) => {
+export const renderArticlesMarkup = (articles, language = 'en') => {
+  const words = copy(language);
   const entries = Array.isArray(articles) ? articles : [];
-  if (!entries.length) return '<p class="articles-empty">New stories will appear here.</p>';
+  if (!entries.length) return `<p class="articles-empty">${words.articlesEmpty}</p>`;
 
   return entries.map((article, index) => {
     const url = safeExternalUrl(article.url);
     if (!url) return '';
-    const publishedAt = formatDate(article.publishedAt);
-    const language = ['el', 'en'].includes(article.language) ? article.language : 'en';
+    const publishedAt = formatDate(article.publishedAt, language);
+    const articleLanguage = ['el', 'en'].includes(article.language) ? article.language : 'en';
     return `
       <article class="article-row">
         <a class="article-row__link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer" data-film-cursor data-cursor-label="Read Article">
@@ -314,22 +333,23 @@ export const renderArticlesMarkup = (articles) => {
               ${article.publisher ? `<span>${escapeHtml(article.publisher)}</span>` : ''}
               ${publishedAt ? `<time datetime="${escapeHtml(article.publishedAt)}">${escapeHtml(publishedAt)}</time>` : ''}
             </span>
-            <span class="article-row__title" lang="${language}">${escapeHtml(article.title)}</span>
+            <span class="article-row__title" lang="${articleLanguage}">${escapeHtml(article.title)}</span>
             ${article.summary ? `<span class="article-row__summary">${escapeHtml(article.summary)}</span>` : ''}
           </span>
-          <span class="article-row__action">Read article <span aria-hidden="true">↗</span></span>
+          <span class="article-row__action">${words.readArticle} <span aria-hidden="true">↗</span></span>
         </a>
       </article>`;
   }).join('');
 };
 
-const formatDuration = (value) => {
+const formatDuration = (value, language = 'en') => {
+  const words = copy(language);
   const parts = String(value || '').split(':').map(Number);
   if (parts.some(Number.isNaN)) return String(value || '');
   const hours = parts.length === 3 ? parts[0] : 0;
   const minutes = parts.length === 3 ? parts[1] : parts[0];
-  if (hours) return `${hours} hr${minutes ? ` ${minutes} min` : ''}`;
-  return minutes ? `${minutes} min` : '< 1 min';
+  if (hours) return `${hours} ${words.hours}${minutes ? ` ${minutes} ${words.minutes}` : ''}`;
+  return minutes ? `${minutes} ${words.minutes}` : `< 1 ${words.minutes}`;
 };
 
 export const getPodcastEpisodePath = (episode) => `/podcast/${encodeURIComponent(episode.id)}`;
@@ -358,11 +378,12 @@ export const renderPodcastPageMarkup = (episode, podcast) => {
   </article>`;
 };
 
-export const renderPodcastEpisodeMarkup = (episode, index, spotifyUrl) => {
+export const renderPodcastEpisodeMarkup = (episode, index, spotifyUrl, language = 'en') => {
+  const words = copy(language);
   const rawTitle = String(episode.title || `Episode ${index + 1}`);
   const title = escapeHtml(rawTitle);
-  const publishedAt = formatDate(episode.publishedAt);
-  const duration = formatDuration(episode.duration);
+  const publishedAt = formatDate(episode.publishedAt, language);
+  const duration = formatDuration(episode.duration, language);
   const audioUrl = safeExternalUrl(episode.audioUrl);
   const episodeUrl = safeExternalUrl(episode.link) || spotifyUrl;
   const episodeNumber = String(episode.episodeNumber || index + 1).padStart(2, '0');
@@ -376,31 +397,32 @@ export const renderPodcastEpisodeMarkup = (episode, index, spotifyUrl) => {
           data-podcast-play
           data-audio-url="${escapeHtml(audioUrl)}"
           data-episode-title="${escapeHtml(rawTitle)}"
-          aria-label="Play ${title}"
+          aria-label="${words.play} ${title}"
         ><span class="podcast-play-icon" aria-hidden="true"></span></button>
       ` : `<span class="podcast-episode__number" aria-hidden="true">${episodeNumber}</span>`}
       <div class="podcast-episode__body">
         <div class="podcast-episode__topline">
-          <span>Episode ${episodeNumber}</span>
+          <span>${words.episode} ${episodeNumber}</span>
           ${publishedAt ? `<time datetime="${escapeHtml(episode.publishedAt)}">${escapeHtml(publishedAt)}</time>` : ''}
         </div>
         <h3><a href="${getPodcastEpisodePath(episode)}">${title}</a></h3>
         ${episode.description ? `<p>${escapeHtml(episode.description)}</p>` : ''}
         <div class="podcast-episode__footer">
           ${duration ? `<span>${escapeHtml(duration)}</span>` : '<span></span>'}
-          <a href="${escapeHtml(episodeUrl)}" target="_blank" rel="noreferrer">Open episode</a>
+          <a href="${escapeHtml(episodeUrl)}" target="_blank" rel="noreferrer">${words.openEpisode}</a>
         </div>
       </div>
     </article>`;
 };
 
-export const renderPodcastEpisodesMarkup = (podcast) => {
+export const renderPodcastEpisodesMarkup = (podcast, language = 'en') => {
+  const words = copy(language);
   const episodes = Array.isArray(podcast?.episodes) ? podcast.episodes : [];
   const spotifyUrl = safeExternalUrl(podcast?.spotifyUrl);
   if (episodes.length) {
-    return episodes.map((episode, index) => renderPodcastEpisodeMarkup(episode, index, spotifyUrl)).join('');
+    return episodes.map((episode, index) => renderPodcastEpisodeMarkup(episode, index, spotifyUrl, language)).join('');
   }
-  return `<p class="podcast-episodes__status">New episodes will appear here. <a href="${escapeHtml(spotifyUrl)}" target="_blank" rel="noreferrer">Follow on Spotify</a>.</p>`;
+  return `<p class="podcast-episodes__status">${words.podcastEmpty} <a href="${escapeHtml(spotifyUrl)}" target="_blank" rel="noreferrer">${words.followSpotify}</a>.</p>`;
 };
 
 const renderSocialLinks = (social) => (Array.isArray(social) ? social : [])
@@ -412,7 +434,7 @@ const renderSocialLinks = (social) => (Array.isArray(social) ? social : [])
   })
   .join('');
 
-export const renderContactPageMarkup = (contact, language = 'en') => {
+export const renderContactPageMarkup = (contact, language = 'en', editorial = null) => {
   const words = copy(language);
   const email = String(contact?.email || '').trim();
   const phone = String(contact?.phone || '').trim();
@@ -422,7 +444,9 @@ export const renderContactPageMarkup = (contact, language = 'en') => {
     <div class="contact-final">
       <div>
         <p class="contact-final__eyebrow">${words.start}</p>
-        <h2 class="contact-final__title">${language === 'el' ? 'Έχετε μια ιδέα;<br><em>Ας της δώσουμε εικόνα.</em>' : "Have something<br>in mind?<br><em>Let's make it.</em>"}</h2>
+        <h2 class="contact-final__title">${editorial ? escapeHtml(editorial.heading).replace(/\n/g, '<br />') : language === 'el' ? 'Έχετε μια ιδέα;<br><em>Ας της δώσουμε εικόνα.</em>' : "Have something<br>in mind?<br><em>Let's make it.</em>"}</h2>
+        ${editorial?.intro ? `<p>${escapeHtml(editorial.intro).replace(/\n/g, '<br />')}</p>` : ''}
+        ${editorial?.body ? `<p>${escapeHtml(editorial.body).replace(/\n/g, '<br />')}</p>` : ''}
       </div>
       <div class="contact-final__details">
         <div>

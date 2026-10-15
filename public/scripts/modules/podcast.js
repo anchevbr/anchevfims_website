@@ -2,13 +2,14 @@ import {
   renderPodcastEpisodesMarkup,
   safeExternalUrl
 } from '/scripts/modules/content-markup.js';
+import { copy, locale } from '/scripts/modules/localization.js';
 
 const SPOTIFY_SHOW_URL = 'https://open.spotify.com/show/2f9bhw76eO5EWttGU6IVuV';
 
 const updatePlayButton = (button, isPlaying) => {
   if (!button) return;
   button.classList.toggle('is-playing', isPlaying);
-  button.setAttribute('aria-label', `${isPlaying ? 'Pause' : 'Play'} ${button.dataset.episodeTitle}`);
+  button.setAttribute('aria-label', `${isPlaying ? copy().pause : copy().play} ${button.dataset.episodeTitle}`);
 };
 
 const bindEpisodePlayback = (root) => {
@@ -64,10 +65,10 @@ export const renderPodcast = async () => {
       cover.src = coverUrl;
     }
 
-    root.innerHTML = renderPodcastEpisodesMarkup({ ...podcast, episodes, spotifyUrl });
+    root.innerHTML = renderPodcastEpisodesMarkup({ ...podcast, episodes, spotifyUrl }, locale());
     bindEpisodePlayback(root);
   } catch (_error) {
-    root.innerHTML = `<p class="podcast-episodes__status">Episodes are available on <a href="${SPOTIFY_SHOW_URL}" target="_blank" rel="noreferrer">Spotify</a>.</p>`;
+    root.innerHTML = `<p class="podcast-episodes__status">${copy().podcastUnavailable} <a href="${SPOTIFY_SHOW_URL}" target="_blank" rel="noreferrer">Spotify</a>.</p>`;
   } finally {
     root.setAttribute('aria-busy', 'false');
   }

@@ -30,7 +30,10 @@ const dictionaries = {
     back: 'Back to work', brief: 'The brief', approach: 'Our approach', production: 'The production', film: 'The film',
     director: 'Director', producer: 'Producer', dop: 'Director of photography', location: 'Location', duration: 'Duration', services: 'Services', deliverables: 'Deliverables',
     behind: 'Behind the scenes', press: 'In the press', credits: 'Credits', next: 'More selected work', startProject: 'Start a project',
-    play: 'Play', pause: 'Pause', episode: 'Episode', openEpisode: 'Open episode'
+    play: 'Play', pause: 'Pause', episode: 'Episode', openEpisode: 'Open episode',
+    readArticle: 'Read article', articlesEmpty: 'New stories will appear here.', articlesUnavailable: 'Articles are temporarily unavailable.',
+    podcastEmpty: 'New episodes will appear here.', followSpotify: 'Follow on Spotify', podcastUnavailable: 'Episodes are available on',
+    close: 'Close', base: 'Base', caseStudy: 'case study', watchYoutube: 'Watch on YouTube', readCoverage: 'Read the coverage', gallery: 'Production gallery', viewProject: 'View project', photograph: 'Production photograph', hours: 'hr', minutes: 'min'
   },
   el: {
     start: 'Ξεκινήστε μια παραγωγή / Αθήνα και διεθνώς', contactTitle: 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.',
@@ -42,7 +45,10 @@ const dictionaries = {
     back: 'Επιστροφή στις παραγωγές', brief: 'Το ζητούμενο', approach: 'Η προσέγγισή μας', production: 'Η παραγωγή', film: 'Η ταινία',
     director: 'Σκηνοθεσία', producer: 'Παραγωγή', dop: 'Διεύθυνση φωτογραφίας', location: 'Τοποθεσία', duration: 'Διάρκεια', services: 'Υπηρεσίες', deliverables: 'Παραδοτέα',
     behind: 'Πίσω από τις κάμερες', press: 'Στον Τύπο', credits: 'Συντελεστές', next: 'Περισσότερες παραγωγές', startProject: 'Συζητήστε την παραγωγή σας',
-    play: 'Αναπαραγωγή', pause: 'Παύση', episode: 'Επεισόδιο', openEpisode: 'Άνοιγμα επεισοδίου'
+    play: 'Αναπαραγωγή', pause: 'Παύση', episode: 'Επεισόδιο', openEpisode: 'Άνοιγμα επεισοδίου',
+    readArticle: 'Διαβάστε το άρθρο', articlesEmpty: 'Σύντομα θα προστεθούν νέες ιστορίες.', articlesUnavailable: 'Τα άρθρα δεν είναι προσωρινά διαθέσιμα.',
+    podcastEmpty: 'Σύντομα θα προστεθούν νέα επεισόδια.', followSpotify: 'Ακολουθήστε στο Spotify', podcastUnavailable: 'Τα επεισόδια είναι διαθέσιμα στο',
+    close: 'Κλείσιμο', base: 'Έδρα', caseStudy: 'παραγωγή', watchYoutube: 'Δείτε στο YouTube', readCoverage: 'Διαβάστε το δημοσίευμα', gallery: 'Εικόνες παραγωγής', viewProject: 'Δείτε την παραγωγή', photograph: 'Φωτογραφία παραγωγής', hours: 'ώρ.', minutes: 'λεπ.'
   }
 };
 

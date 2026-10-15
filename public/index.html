@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" href="/assets/anchevlogo.png" />
-    <link rel="apple-touch-icon" href="/assets/anchevlogo.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png" />
     <!-- SEO:START -->
     <title>Anchev Films | Film Production Company in Athens</title>
     <meta
@@ -25,18 +25,12 @@
     <meta property="og:image:alt" content="Anchev Films, film production in Athens" />
     <link rel="alternate" type="application/rss+xml" title="Anchev Films podcast" href="https://anchor.fm/s/117d9f3d8/podcast/rss" />
     <!-- SEO:END -->
-    <link rel="icon" type="image/png" href="/assets/anchevlogo.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,700&family=GFS+Didot&family=Manrope:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/manrope/manrope-latin-wght-normal.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/bodoni-moda/bodoni-moda-latin-wght-normal.woff2" crossorigin />
     <link rel="stylesheet" href="/styles/base.css?v=20261015-platform" />
     <link rel="stylesheet" href="/styles/layout.css?v=20261015-platform" />
     <link rel="stylesheet" href="/styles/about.css?v=20261015-platform" />
     <link rel="stylesheet" href="/styles/projects.css?v=20261015-platform" />
-    <link rel="stylesheet" href="/styles/admin.css?v=20261015-platform" />
     <link rel="stylesheet" href="/styles/experience.css?v=20261015-platform" />
     <link rel="stylesheet" href="/styles/consent.css?v=20261015-platform" />
     <link rel="stylesheet" href="/styles/main.css?v=20261015-platform" />
@@ -169,7 +163,7 @@
           </header>
           <div class="services-composition" data-reveal>
             <div class="services-visual" aria-hidden="true">
-              <img src="/media/experience/services-production.webp" alt="" loading="eager" fetchpriority="low" decoding="async" />
+              <img src="/media/experience/services-production.webp" alt="" loading="lazy" fetchpriority="low" decoding="async" />
               <span class="services-visual__wash"></span>
               <span class="services-visual__active" data-service-active-name>Creative Development</span>
               <span class="services-visual__counter"><span data-service-current>01</span> / <span data-service-total>06</span></span>

@@ -1,4 +1,5 @@
-import { renderProjectCardMarkup, renderProjectFilmMarkup, renderProjectSupportingMarkup, setupProjectFilmPlayers } from '/scripts/modules/content-markup.js?v=20261010-project';
+import { renderProjectCardMarkup, renderProjectFilmMarkup, renderProjectSupportingMarkup, setupProjectFilmPlayers } from '/scripts/modules/content-markup.js';
+import { copy } from '/scripts/modules/localization.js';
 
 const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character) => ({
   '&': '&amp;',
@@ -32,6 +33,11 @@ export let projectModal = null;
 
 const fetchProjects = async () => {
   try {
+    const embedded = document.getElementById('public-projects');
+    if (embedded) {
+      const projects = JSON.parse(embedded.textContent);
+      if (Array.isArray(projects)) { cachedProjects = projects; projectsRequestFailed = false; return projects; }
+    }
     const response = await fetch(`/api/projects?lang=${document.documentElement.lang === 'el' ? 'el' : 'en'}`);
     if (!response.ok) throw new Error('Unable to load projects.');
     const data = await response.json();
@@ -212,6 +218,8 @@ const buildCaseStudy = (project, projects) => {
   const frames = Array.isArray(project.frames) ? project.frames.map(safeAssetUrl).filter(Boolean) : [];
   const projectIndex = Math.max(0, projects.findIndex((item) => item.id === project.id));
   const nextProject = projects[(projectIndex + 1) % projects.length];
+  const words = copy();
+  const labels = { Director: words.director, Producer: words.producer, Cinematography: words.dop, Location: words.location, Duration: words.duration, Services: words.services, Deliverables: words.deliverables };
   const brief = project.brief || project.note;
   const externalLink = safeAssetUrl(project.link);
 
@@ -219,7 +227,7 @@ const buildCaseStudy = (project, projects) => {
     <div class="case-study__shell">
       <header class="case-study__header">
         <p class="case-study__running-title">Anchev Films / Project ${String(projectIndex + 1).padStart(2, '0')}</p>
-        <button class="case-study__close" type="button" data-close-case>Close</button>
+        <button class="case-study__close" type="button" data-close-case>${words.close}</button>
       </header>
       <section class="case-study__hero">
         <div class="case-study__hero-media">${heroMedia}</div>
@@ -229,15 +237,15 @@ const buildCaseStudy = (project, projects) => {
         </div>
       </section>
       <div class="case-study__content">
-        ${!isDirectVideo(project.video) ? renderProjectFilmMarkup(project.video, thumbnail, 'The Film') : ''}
-        ${caseStudySection(1, 'The Brief', 'The brief.', brief)}
-        ${caseStudySection(2, 'Our Approach', 'The approach.', project.approach)}
-        ${caseStudySection(3, 'The Production', 'The production.', project.production)}
+        ${!isDirectVideo(project.video) ? renderProjectFilmMarkup(project.video, thumbnail, words.film) : ''}
+        ${caseStudySection(1, words.brief, words.brief, brief)}
+        ${caseStudySection(2, words.approach, words.approach, project.approach)}
+        ${caseStudySection(3, words.production, words.production, project.production)}
         ${rows.length ? `
           <dl class="case-study__details">
             ${rows.map(([label, value]) => `
               <div class="case-study__detail">
-                <dt>${escapeHtml(label)}</dt>
+                <dt>${escapeHtml(labels[label] || label)}</dt>
                 <dd>${escapeHtml(value)}</dd>
               </div>`).join('')}
           </dl>` : ''}
@@ -248,17 +256,17 @@ const buildCaseStudy = (project, projects) => {
             ${frames.map((frame, index) => `<figure><img src="${escapeHtml(frame)}" alt="Production photograph ${index + 1} from ${escapeHtml(project.name)}" loading="lazy" /></figure>`).join('')}
           </section>` : ''}
         ${credits.length ? `
-          <section class="case-study__credits" aria-label="Credits">
+          <section class="case-study__credits" aria-label="${words.credits}">
             ${credits.map(([role, name]) => `
               <div class="case-study__credit">
                 <span class="case-study__credit-role">${escapeHtml(role)}</span>
                 <span class="case-study__credit-name">${escapeHtml(name)}</span>
               </div>`).join('')}
           </section>` : ''}
-        ${externalLink ? `<p><a class="case-study__external" href="${escapeHtml(externalLink)}" target="_blank" rel="noreferrer">View project</a></p>` : ''}
+        ${externalLink ? `<p><a class="case-study__external" href="${escapeHtml(externalLink)}" target="_blank" rel="noreferrer">${words.viewFilm}</a></p>` : ''}
         ${nextProject && nextProject.id !== project.id ? `
           <div class="case-study__next">
-            <p class="case-study__next-label">Next project</p>
+            <p class="case-study__next-label">${words.next}</p>
             <button class="case-study__next-button" type="button" data-next-project="${escapeHtml(nextProject.id)}">${escapeHtml(nextProject.name)}</button>
           </div>` : ''}
       </div>
@@ -295,7 +303,7 @@ export const openProjectModal = (project, sourceCard = null, options = {}) => {
   element.className = 'case-study';
   element.setAttribute('role', 'dialog');
   element.setAttribute('aria-modal', 'true');
-  element.setAttribute('aria-label', `${project.name} case study`);
+  element.setAttribute('aria-label', `${project.name} ${copy().caseStudy}`);
   element.tabIndex = -1;
   element.innerHTML = buildCaseStudy(project, projects);
   document.body.append(element);
@@ -311,7 +319,7 @@ export const openProjectModal = (project, sourceCard = null, options = {}) => {
     }
   }, sourceCard ? 260 : 0);
 
-  if (updateHistory && window.location.pathname !== `/work/${encodeURIComponent(project.id)}`) {
+  if (updateHistory && !document.documentElement.hasAttribute('data-settings-preview') && window.location.pathname !== `/work/${encodeURIComponent(project.id)}`) {
     history.pushState({ projectId: project.id }, '', `/work/${encodeURIComponent(project.id)}`);
   }
 

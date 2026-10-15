@@ -121,3 +121,83 @@ test('historical derivative references prevent media deletion', async () => {
     await service.stop(); store.close(); await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('archived originals restore with integrity and stale-write checks', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'anchev-original-history-'));
+  const store = new ContentStore(directory);
+  const service = new MediaService(store, path.join(directory, 'uploads'));
+  try {
+    const source = path.join(directory, 'fixture.png');
+    const image = (background) => sharp({ create: { width: 32, height: 24, channels: 3, background } }).png().toFile(source);
+    await image('#cc3311');
+    const { asset } = await service.ingest({ path: source, originalname: 'first.png' }, null);
+    await service.processNext();
+    await image('#1122cc');
+    const replaced = await service.ingest({ path: source, originalname: 'second.png' }, null, asset.id);
+    await service.processNext();
+    const [version] = await service.history(asset.id);
+    assert.equal(version.checksum, asset.checksum);
+    await assert.rejects(service.restore(asset.id, version.id, asset.checksum, null), { status: 409 });
+    await rm(service.filename(asset));
+    await service.reconcile();
+    assert.equal(service.isQuarantined(asset.url), true);
+    const restored = await service.restore(asset.id, version.id, replaced.asset.checksum, null);
+    assert.equal(service.isQuarantined(asset.url), false);
+    assert.equal(restored.asset.checksum, asset.checksum);
+    assert.equal(restored.asset.url, asset.url);
+    assert.equal((await service.history(asset.id)).length, 1);
+    await service.processNext();
+    await writeFile(path.join(directory, 'media-history', asset.id, version.id), 'corrupt archive');
+    await assert.rejects(service.restore(asset.id, version.id, asset.checksum, null), { status: 409 });
+  } finally { await service.stop(); store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('startup reconciliation repairs interrupted replacements and reports unrecoverable originals', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'anchev-original-recovery-'));
+  const store = new ContentStore(directory);
+  const service = new MediaService(store, path.join(directory, 'uploads'));
+  try {
+    const source = path.join(directory, 'fixture.png');
+    await sharp({ create: { width: 32, height: 24, channels: 3, background: '#cc3311' } }).png().toFile(source);
+    const { asset } = await service.ingest({ path: source, originalname: 'first.png' }, null);
+    await service.processNext();
+    const history = path.join(directory, 'media-history', asset.id);
+    await mkdir(history, { recursive: true });
+    const archived = path.join(history, '00000000-0000-0000-0000-000000000001.png');
+    await sharp(service.filename(asset)).toFile(archived);
+    await writeFile(`${archived}.json`, JSON.stringify({ assetId: asset.id, previousChecksum: asset.checksum, createdAt: new Date().toISOString() }));
+    await writeFile(service.filename(asset), 'interrupted replacement');
+    assert.deepEqual(await service.reconcile(), [{ id: asset.id, recovered: true }]);
+    assert.equal(await checksum(service.filename(asset)), asset.checksum);
+    await rm(history, { recursive: true });
+    await writeFile(service.filename(asset), 'unrecoverable');
+    assert.deepEqual(await service.reconcile(), [{ id: asset.id, recovered: false }]);
+    assert.equal(store.media(asset.id).status, 'failed');
+    assert.equal(service.isQuarantined(asset.url), true);
+    assert.equal(service.isQuarantined(asset.url.replace('original', '%6friginal')), true);
+    assert.equal(new MediaService(store, service.uploadsDir).isQuarantined(asset.url), true);
+    store.db.prepare("UPDATE jobs SET status='queued' WHERE media_id=?").run(asset.id);
+    await service.processNext();
+    assert.equal(service.isQuarantined(asset.url), true);
+    assert.match(store.media(asset.id).error, /integrity check failed/);
+  } finally { await service.stop(); store.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test('overlapping replacements are rejected before modifying the shared original', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'anchev-replacement-lock-'));
+  const store = new ContentStore(directory);
+  const service = new MediaService(store, path.join(directory, 'uploads'));
+  try {
+    const source = path.join(directory, 'fixture.png');
+    await sharp({ create: { width: 32, height: 24, channels: 3, background: '#cc3311' } }).png().toFile(source);
+    const { asset } = await service.ingest({ path: source, originalname: 'first.png' }, null);
+    await service.processNext();
+    const sources = [path.join(directory, 'one.png'), path.join(directory, 'two.png')];
+    for (const filename of sources) await sharp({ create: { width: 32, height: 24, channels: 3, background: '#1122cc' } }).png().toFile(filename);
+    const results = await Promise.allSettled(sources.map((filename) => service.ingest({ path: filename, originalname: 'replacement.png' }, null, asset.id)));
+    assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1);
+    assert.equal(results.find((result) => result.status === 'rejected').reason.status, 409);
+    assert.equal(await checksum(service.filename(asset)), store.media(asset.id).checksum);
+    assert.equal((await service.history(asset.id)).length, 1);
+  } finally { await service.stop(); store.close(); await rm(directory, { recursive: true, force: true }); }
+});

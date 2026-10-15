@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { XMLParser } from 'fast-xml-parser';
 import helmet from 'helmet';
+import compression from 'compression';
 import { rateLimit } from 'express-rate-limit';
 import { z, ZodError } from 'zod';
 import { ContentStore } from './src/database.js';
@@ -12,6 +13,7 @@ import { installAuthentication, requirePermission } from './src/auth.js';
 import { installAdminApi } from './src/admin-api.js';
 import { MediaService } from './src/media.js';
 import { renderPublicDocument, renderPageBody } from './src/public-pages.js';
+import { createPublicAssets } from './src/public-assets.js';
 import {
   renderAboutPageMarkup,
   renderArticlesMarkup,
@@ -24,13 +26,14 @@ import {
   renderProjectPageMarkup,
   renderStudioPageMarkup
 } from './public/scripts/modules/content-markup.js';
-import { servicePages, getServicePage, getServicePath, getLanguageAlternates, renderServicePageMarkup } from './public/scripts/modules/service-pages.js';
+import { servicePages, getServicePage, getServicePath, getSiteContentPath, getLanguageAlternates, renderServicePageMarkup } from './public/scripts/modules/service-pages.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, 'public');
+const publicAssets = process.env.NODE_ENV === 'production' || process.env.BUNDLE_PUBLIC_ASSETS === '1' ? await createPublicAssets(publicDir) : null;
 const uploadsDir = path.resolve(process.env.UPLOADS_DIR || path.join(publicDir, 'uploads'));
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const store = new ContentStore(dataDir);
@@ -559,7 +562,7 @@ const getProjectSchema = ({ origin, canonical, image, siteImage, logo, project, 
   };
 };
 
-const getSeoPage = async (req, settingsOverride) => {
+const getSeoPage = async (req, settingsOverride, pageOverride) => {
   const language = req.path === '/el' || req.path.startsWith('/el/') ? 'el' : 'en';
   const [settings, clients, articles, rawProjects, podcast] = await Promise.all([
     settingsOverride ?? readSettings(),
@@ -620,16 +623,34 @@ const getSeoPage = async (req, settingsOverride) => {
       renderData: { episode, podcast }
     };
   }
-  const servicePage = getServicePage(req.path);
+  const serviceSlug = req.path.match(/^\/(?:el\/)?services\/([a-z0-9-]+)$/)?.[1];
+  const servicePage = getServicePage(req.path, pageOverride || (serviceSlug ? store.page(`service-${serviceSlug}`, language, true) : null));
   const alternates = servicePage ? getLanguageAlternates(servicePage).map((entry) => ({
     language: entry.language,
     url: getAbsoluteUrl(origin, entry.path)
   })) : [];
 
+  const studioPage = /^\/(?:el\/)?studio$/.test(req.path) ? pageOverride || store.page('studio', language, true) : null;
+  if (studioPage) {
+    const canonical = getAbsoluteUrl(origin, req.path);
+    const image = getAbsoluteUrl(origin, studioPage.seo?.image || studioPage.blocks.find((block) => block.type === 'image')?.url || '/media/experience/studio-poster.jpg');
+    const description = studioPage.seo?.description || limitSeoDescription(studioPage.intro);
+    return {
+      status: 200, title: studioPage.seo?.title || `${studioPage.heading} | ${SITE_NAME}`, description, canonical,
+      image, imageAlt: studioPage.heading, language, alternates, ogType: 'website',
+      robots: studioPage.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large',
+      schema: { '@context': 'https://schema.org', '@graph': [
+        { '@type': 'WebPage', name: studioPage.heading, url: canonical, description, inLanguage: language, mainEntity: { '@id': `${canonical}#place` } },
+        { '@type': 'Place', '@id': `${canonical}#place`, name: studioPage.heading, url: canonical, description, image,
+          amenityFeature: studioPage.blocks.filter((block) => block.type === 'fact').map((block) => ({ '@type': 'LocationFeatureSpecification', name: block.title, value: block.text })) }
+      ] },
+      renderData: { studio: true, studioPage, visuals: [], language }
+    };
+  }
   if (servicePage && req.path !== '/studio') {
     const copy = servicePage[language];
     const canonical = getAbsoluteUrl(origin, getServicePath(servicePage, language));
-    const image = getAbsoluteUrl(origin, '/media/studio/studio-frame-01.jpg');
+    const image = getAbsoluteUrl(origin, servicePage.seo?.image || servicePage.heroImage || '/media/studio/studio-frame-01.jpg');
     const mainEntity = servicePage.isStudio ? {
       '@type': 'Place', '@id': `${canonical}#place`, name: 'Anchev Studio', url: canonical,
       description: copy.description, image,
@@ -641,10 +662,10 @@ const getSeoPage = async (req, settingsOverride) => {
       provider: { '@id': `${origin}/#organization` }, areaServed: { '@type': 'Country', name: 'Greece' }
     };
     return {
-      status: 200, title: `${copy.title} | ${SITE_NAME}`, description: copy.description,
+      status: 200, title: servicePage.seo?.title || `${copy.title} | ${SITE_NAME}`, description: copy.description,
       canonical, image, imageAlt: 'Inside Anchev Studio in Melissia', imageType: 'image/jpeg',
       ogType: 'website', language, alternates,
-      robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+      robots: servicePage.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
       schema: { '@context': 'https://schema.org', '@graph': [
         getOrganizationNode({ origin, description: getHomeDescription(null), image: defaultImage, logo, settings }),
         { '@type': 'WebPage', '@id': `${canonical}#webpage`, name: copy.title, description: copy.description,
@@ -918,7 +939,7 @@ const renderSeoPage = async (req, res, options = {}) => {
       Object.defineProperty(routedRequest, 'path', { value: options.path });
       req = routedRequest;
     }
-    const seo = await getSeoPage(req, options.settings);
+    const seo = await getSeoPage(req, options.settings, options.page);
     if (options.preview) { seo.robots = 'noindex,nofollow,noarchive'; seo.alternates = []; }
     const template = await fs.readFile(seo.renderData.project || seo.renderData.studio || seo.renderData.servicePage || seo.renderData.episode || seo.renderData.customPage ? projectTemplateFile : indexFile, 'utf8');
     const seoMarkup = `<!-- SEO:START -->\n    ${getSeoTags(seo)}\n    <!-- SEO:END -->`;
@@ -929,19 +950,20 @@ const renderSeoPage = async (req, res, options = {}) => {
       : seo.renderData.servicePage
       ? injectRootMarkup(template, 'project-page-root', renderServicePageMarkup(seo.renderData.servicePage, seo.renderData.language, seo.renderData.projects, seo.renderData.settings.contact || {}))
       : seo.renderData.studio
-      ? injectRootMarkup(template, 'project-page-root', renderStudioPageMarkup(seo.renderData.visuals))
+      ? injectRootMarkup(template, 'project-page-root', renderStudioPageMarkup(seo.renderData.visuals, seo.renderData.studioPage, seo.language))
       : seo.renderData.project
       ? injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(seo.renderData.project, seo.renderData.projects, seo.description))
       : renderDynamicContent(template, seo.renderData);
     res.setHeader('Cache-Control', 'no-store');
-    const document = renderPublicDocument(renderedTemplate.replace(SEO_BLOCK, seoMarkup), { language: seo.language || 'en', route: req.path, store, settings: options.settings, preview: options.preview, home: req.path === '/' || req.path === '/index.html' || req.path === '/el/', project: seo.renderData.project });
-    res.status(seo.status || 200).type('html').send(document.replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
+    const document = renderPublicDocument(renderedTemplate.replace(SEO_BLOCK, seoMarkup), { language: seo.language || 'en', route: req.path, store, settings: options.settings, page: options.page, preview: options.preview, home: req.path === '/' || req.path === '/index.html' || req.path === '/el/', project: seo.renderData.project });
+    res.status(seo.status || 200).type('html').send((publicAssets ? publicAssets.render(document) : document).replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (_error) {
     res.status(500).send('Unable to render this page.');
   }
 };
 
 app.disable('x-powered-by');
+app.use(compression({ filter: (req, res) => !req.path.startsWith('/api/') && !req.path.startsWith('/admin') && compression.filter(req, res) }));
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 app.use((_req, res, next) => {
   res.locals.nonce = crypto.randomBytes(18).toString('base64');
@@ -977,6 +999,8 @@ app.use(express.json({ limit: '256kb' }));
 installAuthentication(app, store);
 installAdminApi(app, store);
 media.install(app);
+const mediaRecovery = await media.reconcile();
+if (mediaRecovery.length) console.info(JSON.stringify({ event: 'media.reconciliation', results: mediaRecovery }));
 if (process.env.MEDIA_WORKER !== '0') media.start();
 app.get('/api/admin/settings/preview.html', requirePermission('settings'), async (req, res, next) => {
   try {
@@ -1005,6 +1029,13 @@ app.get('/api/admin/pages/:locale/:id/preview.html', async (req, res, next) => {
   try {
     const page = store.page(req.params.id, req.params.locale);
     if (!page || !['en', 'el'].includes(req.params.locale)) return res.status(404).json({ error: 'Page not found.' });
+    const sitePath = getSiteContentPath(page.id, page.locale);
+    if (sitePath) {
+      res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+      return renderSeoPage(req, res, { path: sitePath, page, preview: {} });
+    }
     const template = await fs.readFile(projectTemplateFile, 'utf8');
     const markup = injectRootMarkup(template, 'project-page-root', renderPageBody(page, page.locale));
     const document = renderPublicDocument(markup.replace(SEO_BLOCK, '<meta name="robots" content="noindex,nofollow,noarchive" />'), { language: page.locale, route: `${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, store });
@@ -1014,10 +1045,11 @@ app.get('/api/admin/pages/:locale/:id/preview.html', async (req, res, next) => {
     res.type('html').send(document.replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (error) { next(error); }
 });
+publicAssets?.install(app);
 const servePublicFiles = express.static(publicDir, {
   extensions: ['html'],
   index: false,
-  maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+  maxAge: '1h',
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-store');
@@ -1125,15 +1157,19 @@ app.get('/sitemap.xml', async (req, res) => {
         imageTitle: `${SITE_NAME} film production in Athens`
       }),
       getSitemapUrl({ location: `${origin}/el/`, lastModified: dates.home, priority: '1.0', changeFrequency: 'weekly', alternates: ['en','el','x-default'].map((language) => ({ language, url: `${origin}${language === 'el' ? '/el/' : '/'}` })) })]),
-      getSitemapUrl({
+      ...(store.page('studio', 'en', true)?.seo?.noindex ? [] : [getSitemapUrl({
         location: getAbsoluteUrl(origin, '/studio'),
         lastModified: dates.home,
         priority: '0.8',
         changeFrequency: 'monthly',
         image: getAbsoluteUrl(origin, '/media/experience/studio-poster.jpg'),
         imageTitle: 'Anchev Studio production space'
-      }),
+      })]),
       ...[...servicePages.flatMap((page) => ['en', 'el'].map((language) => getServicePath(page, language))), '/el/studio']
+        .filter((pathname) => {
+          const service = getServicePage(pathname);
+          return !store.page(service.isStudio ? 'studio' : `service-${service.slug}`, pathname.startsWith('/el/') ? 'el' : 'en', true)?.seo?.noindex;
+        })
         .map((pathname) => getSitemapUrl({ location: getAbsoluteUrl(origin, pathname), lastModified: dates.home, priority: '0.8', changeFrequency: 'monthly' })),
       ...(podcast?.episodes || []).map((episode) => getSitemapUrl({
         location: getAbsoluteUrl(origin, getPodcastEpisodePath(episode)),
@@ -1154,7 +1190,7 @@ app.get('/sitemap.xml', async (req, res) => {
           alternates: languages.length > 1 ? ['en','el','x-default'].map((locale) => ({ language: locale, url: `${origin}${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}` })) : []
           }));
         }),
-      ...store.db.prepare('SELECT id,locale,published,updated_at FROM pages WHERE published IS NOT NULL').all().filter((page) => !JSON.parse(page.published).seo?.noindex).map((page) => getSitemapUrl({ location: `${origin}${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, lastModified: page.updated_at.slice(0,10), priority: '0.6', changeFrequency: 'monthly' }))
+      ...store.db.prepare('SELECT id,locale,published,updated_at FROM pages WHERE published IS NOT NULL').all().filter((page) => !JSON.parse(page.published).seo?.noindex && !getSiteContentPath(page.id, page.locale)).map((page) => getSitemapUrl({ location: `${origin}${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, lastModified: page.updated_at.slice(0,10), priority: '0.6', changeFrequency: 'monthly' }))
     ];
     res.setHeader('Cache-Control', 'no-store');
     res.type('application/xml').send([
@@ -1179,16 +1215,28 @@ app.use((req, res, next) => {
   if (redirect) return res.redirect(301, `${redirect.target}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`);
   next();
 });
+app.get(['/pages/:id', '/el/pages/:id'], (req, res, next) => {
+  const locale = req.path.startsWith('/el/') ? 'el' : 'en';
+  const canonical = getSiteContentPath(req.params.id, locale);
+  if (!canonical || !store.page(req.params.id, locale, true)) return next();
+  res.redirect(301, `${canonical}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}${req.params.id === 'contact' ? '#contact-page' : ''}`);
+});
 app.get(['/', '/index.html', '/el/', '/work/:id', '/el/work/:id', '/studio', '/services/:slug', '/el/services/:slug', '/el/studio', '/pages/:id', '/el/pages/:id', '/privacy', '/el/privacy'], renderSeoPage);
 app.get(['/project', '/project.html'], (_req, res) => res.redirect(301, '/'));
 app.get('/vendor/lucide.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules', 'lucide', 'dist', 'umd', 'lucide.min.js')));
+for (const font of ['manrope', 'bodoni-moda', 'gfs-didot']) {
+  app.use(`/fonts/${font}`, express.static(path.join(__dirname, 'node_modules', '@fontsource' + (font === 'gfs-didot' ? '' : '-variable'), font, 'files'), { dotfiles: 'deny', index: false, maxAge: '7d' }));
+}
 app.get(['/admin', '/admin.html'], (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
   res.sendFile(path.join(publicDir, 'admin.html'));
 });
 app.get('/studio/anchev', (_req, res) => res.redirect(301, '/admin'));
-app.use('/uploads', express.static(uploadsDir, { dotfiles: 'deny', fallthrough: false, maxAge: 0 }));
+app.use('/uploads', (req, res, next) => {
+  if (media.isQuarantined(`/uploads${req.path}`)) return res.status(503).set('Cache-Control', 'no-store').send('This media is temporarily unavailable.');
+  next();
+}, express.static(uploadsDir, { dotfiles: 'deny', fallthrough: false, maxAge: 0 }));
 app.use(servePublicFiles);
 
 app.get('*', renderSeoPage);

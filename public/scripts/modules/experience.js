@@ -452,7 +452,27 @@ export const setupStudioVideo = () => {
 
 export const setupFilmExperience = () => {
   window.__anchevFilmExperienceCleanup?.();
+  const nearImages = new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting) {
+      entry.target.querySelectorAll('img[data-near-src]').forEach((image) => {
+        image.src = image.dataset.nearSrc;
+        image.removeAttribute('data-near-src');
+      });
+      nearImages.unobserve(entry.target);
+    }
+  });
+  document.querySelectorAll('.tagline-story').forEach((section) => nearImages.observe(section));
+  const contact = document.querySelector('.contact-page');
+  const contactObserver = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) {
+      contact?.classList.add('is-media-ready');
+      contactObserver.disconnect();
+    }
+  }, { rootMargin: '600px' });
+  if (contact) contactObserver.observe(contact);
   const cleanups = [
+    () => nearImages.disconnect(),
+    () => contactObserver.disconnect(),
     setupOpeningSequence(),
     setupStoryProgression(),
     setupIndexedScrollChapters(),

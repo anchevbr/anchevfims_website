@@ -10,6 +10,15 @@ const heroMedia = document.getElementById('hero-media');
 const ambienceStorageKey = 'anchev-ambience-enabled';
 let heroVideo = null;
 let currentHeroSource = '';
+let heroPlaybackRequested = false;
+
+const addHeroAction = (trigger) => {
+  const reel = document.querySelector('.hero-copy [data-open-reel]');
+  if (!reel) return;
+  let actions = reel.closest('.hero-actions');
+  if (!actions) { actions = document.createElement('div'); actions.className = 'hero-actions'; reel.before(actions); actions.append(reel); }
+  actions.append(trigger);
+};
 
 const getResponsiveHeroSource = () => {
   const primarySource = String(siteContent.media.videoSource || '').trim();
@@ -54,7 +63,7 @@ const createNativeHeroVideo = (source) => {
   const video = document.createElement('video');
   video.id = 'hero-video';
   video.className = 'hero-video';
-  video.autoplay = !window.matchMedia('(prefers-reduced-motion: reduce)').matches && !navigator.connection?.saveData;
+  video.autoplay = heroPlaybackRequested;
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
@@ -113,7 +122,7 @@ const updateHeroPlayback = () => {
   }
 
   if (heroVideo instanceof HTMLVideoElement) {
-    if (body.classList.contains('reduced-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData) {
+    if (!heroPlaybackRequested || document.hidden) {
       heroVideo.pause();
     } else {
       if (!heroVideo.getAttribute('src') && heroVideo.dataset.src) heroVideo.src = heroVideo.dataset.src;
@@ -138,6 +147,7 @@ export const setVideoSource = () => {
 
   currentHeroSource = source;
   document.getElementById('hero-youtube-load')?.remove();
+  document.getElementById('hero-background-toggle')?.remove();
   heroMedia.parentElement.classList.remove('is-playing');
 
   const youtubeVideoId = getYouTubeVideoId(source);
@@ -154,17 +164,23 @@ export const setVideoSource = () => {
       heroMedia.replaceChildren(heroVideo);
       trigger.remove();
     }, { once: true });
-    const reel = document.querySelector('.hero-copy [data-open-reel]');
-    if (reel) {
-      let actions = reel.closest('.hero-actions');
-      if (!actions) { actions = document.createElement('div'); actions.className = 'hero-actions'; reel.before(actions); actions.append(reel); }
-      actions.append(trigger);
-    }
+    addHeroAction(trigger);
     return;
   }
 
+  heroPlaybackRequested = !window.matchMedia('(max-width: 820px)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && !navigator.connection?.saveData;
   heroVideo = createNativeHeroVideo(source);
   heroMedia.replaceChildren(heroVideo);
+  const toggle = document.createElement('button');
+  toggle.id = 'hero-background-toggle';
+  toggle.className = 'hero-youtube-load';
+  toggle.type = 'button';
+  const label = () => {
+    toggle.textContent = document.documentElement.lang === 'el' ? heroPlaybackRequested ? 'Παύση φόντου' : 'Αναπαραγωγή φόντου' : heroPlaybackRequested ? 'Pause background' : 'Play background';
+    toggle.setAttribute('aria-pressed', String(heroPlaybackRequested));
+  };
+  toggle.addEventListener('click', () => { heroPlaybackRequested = !heroPlaybackRequested; label(); updateHeroPlayback(); });
+  label(); addHeroAction(toggle);
   updateHeroPlayback();
 };
 
@@ -208,6 +224,12 @@ export const setupMotionPreferences = () => {
   const applyReduced = () => {
     if (media.matches) {
       body.classList.add('reduced-motion');
+      heroPlaybackRequested = false;
+      const toggle = document.getElementById('hero-background-toggle');
+      if (toggle) {
+        toggle.setAttribute('aria-pressed', 'false');
+        toggle.textContent = document.documentElement.lang === 'el' ? 'Αναπαραγωγή φόντου' : 'Play background';
+      }
     } else {
       body.classList.remove('reduced-motion');
     }

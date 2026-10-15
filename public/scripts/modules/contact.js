@@ -11,6 +11,7 @@ const escapeHtml = (value) => String(value || '').replace(/[&<>'"]/g, (character
 }[character]));
 
 export const renderContact = () => {
+  const words = copy();
   const email = String(siteContent.contact.email || '').trim();
   const phone = String(siteContent.contact.phone || '').trim();
   const location = String(siteContent.contact.location || '').trim();
@@ -28,24 +29,24 @@ export const renderContact = () => {
 
   if (panelRoot) panelRoot.innerHTML = `
     <div class="ctp-header">
-      <span class="ctp-eyebrow">Start a Project</span>
+      <span class="ctp-eyebrow">${words.startProject}</span>
       <span class="ctp-rule"></span>
     </div>
     <div class="ctp-hero">
-      <h2 class="ctp-title">Bring us<br><em>the brief.</em></h2>
+      <h2 class="ctp-title">${words.contactTitle}</h2>
     </div>
     <div class="ctp-divider"></div>
     <div class="contact-grid">
       <a class="contact-card" href="mailto:${escapeHtml(email)}">
-        <span>Email</span>
+        <span>${words.email}</span>
         <strong>${escapeHtml(email)}</strong>
       </a>
       <a class="contact-card" href="tel:${escapeHtml(phone.replace(/\s+/g, ''))}">
-        <span>Phone</span>
+        <span>${words.phone}</span>
         <strong>${escapeHtml(phone)}</strong>
       </a>
       <div class="contact-card">
-        <span>Base</span>
+        <span>${words.base}</span>
         <strong>${escapeHtml(location)}</strong>
       </div>
     </div>

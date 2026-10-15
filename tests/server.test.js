@@ -8,6 +8,8 @@ import path from 'node:path';
 import { ContentStore } from '../src/database.js';
 import { createUser } from '../src/auth.js';
 import { load } from 'cheerio';
+import sharp from 'sharp';
+import { MediaService } from '../src/media.js';
 
 let directory;
 let child;
@@ -72,7 +74,7 @@ before(async () => {
   store.importJson();
   await createUser(store, { email: 'owner@example.com', name: 'Owner', role: 'owner', password });
   store.close();
-  child = fork('server.js', [], { cwd: process.cwd(), env: { ...process.env, NODE_ENV: 'test', PORT: '0', DATA_DIR: directory, UPLOADS_DIR: path.join(directory, 'uploads'), SESSION_SECRET: 'test-only-session-secret-with-enough-length', MEDIA_WORKER: '0', PODCAST_FEED_URL: 'http://127.0.0.1:1/unavailable' }, silent: true });
+  child = fork('server.js', [], { cwd: process.cwd(), env: { ...process.env, NODE_ENV: 'test', BUNDLE_PUBLIC_ASSETS: '1', PORT: '0', DATA_DIR: directory, UPLOADS_DIR: path.join(directory, 'uploads'), SESSION_SECRET: 'test-only-session-secret-with-enough-length', MEDIA_WORKER: '0', PODCAST_FEED_URL: 'http://127.0.0.1:1/unavailable' }, silent: true });
   let errors = '';
   child.stderr.on('data', (value) => { errors += value; });
   const message = await Promise.race([once(child, 'message'), once(child, 'exit').then(() => { throw new Error(errors || 'Server exited before readiness.'); })]);
@@ -88,12 +90,39 @@ before(async () => {
 after(async () => { child.kill('SIGTERM'); await once(child, 'exit'); await rm(directory, { recursive: true, force: true }); });
 
 test('live server has nonce CSP, security headers, health and private API controls', async () => {
+  const css = await fetch(`${origin}/styles/experience.css`, { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(css.headers.get('content-encoding'), 'gzip');
+  assert.match(css.headers.get('vary'), /Accept-Encoding/);
+  assert.equal(css.headers.get('cache-control'), 'no-cache');
+  const logo = await fetch(`${origin}/assets/anchevlogo.png`);
+  assert.match(logo.headers.get('cache-control'), /max-age=3600/);
+  const session = await fetch(`${origin}/api/admin/session`, { headers: { cookie, 'accept-encoding': 'gzip' } });
+  assert.equal(session.headers.get('content-encoding'), null);
+  for (const font of ['manrope/manrope-latin-wght-normal.woff2', 'manrope/manrope-greek-wght-normal.woff2', 'bodoni-moda/bodoni-moda-latin-wght-normal.woff2', 'gfs-didot/gfs-didot-greek-400-normal.woff2']) {
+    const response = await fetch(`${origin}/fonts/${font}`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /font\/woff2/);
+  }
   const response = await fetch(`${origin}/`);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(response.headers.get('x-powered-by'), null);
   assert.match(response.headers.get('content-security-policy'), /nonce-/);
   const html = await response.text();
+  assert.equal(load(html)('.brandmark img').attr('fetchpriority'), 'high');
+  assert.equal(load(html)('link[rel="icon"]').length, 1);
+  assert.equal(load(html)('link[rel="icon"]').attr('href'), '/assets/favicon-32.png');
+  const stylesheets = load(html)('link[rel="stylesheet"]');
+  assert.equal(stylesheets.length, 1);
+  const bundle = await fetch(`${origin}${stylesheets.attr('href')}`, { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(bundle.status, 200);
+  assert.equal(bundle.headers.get('content-encoding'), 'gzip');
+  assert.equal(bundle.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(bundle.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(bundle.headers.get('content-security-policy'), /default-src 'self'/);
+  const script = load(html)('script[src*="/assets/site-"]');
+  assert.equal(script.length, 1);
+  assert.match(script.attr('src'), /^\/assets\/site-[a-f0-9]{20}\.js$/);
   assert.match(html, /<script nonce="[^"]+"/);
   assert.match(html, /Published original/);
   assert.equal((await fetch(`${origin}/api/admin/projects`)).status, 401);
@@ -130,6 +159,50 @@ test('contact submissions validate consent and persist real inquiries', async ()
 });
 
 const adminPost = (route, body) => fetch(`${origin}/api/admin/${route}`, { method: 'POST', headers: { cookie, origin, 'x-csrf-token': csrf, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+test('media restoration enforces permissions, CSRF, stale checksums and quarantine through HTTP', async () => {
+  const store = new ContentStore(directory);
+  const media = new MediaService(store, path.join(directory, 'uploads'));
+  const upload = async (color, route) => {
+    const bytes = await sharp({ create: { width: 32, height: 24, channels: 3, background: color } }).png().toBuffer();
+    const body = new FormData();
+    body.append('file', new Blob([bytes], { type: 'image/png' }), 'restore-fixture.png');
+    const response = await fetch(`${origin}/api/admin/${route}`, { method: 'POST', headers: { cookie, origin, 'x-csrf-token': csrf }, body });
+    assert.ok(response.ok);
+    const result = await response.json();
+    await media.processNext();
+    return result.asset;
+  };
+  try {
+    const original = await upload('#996600', 'upload');
+    const replacement = await upload('#006699', `media/${original.id}/replace`);
+    const endpoint = `media/${original.id}/restore`;
+    const history = `media/${original.id}/history`;
+    assert.equal((await fetch(`${origin}/api/admin/${history}`)).status, 401);
+    const { versions } = await (await fetch(`${origin}/api/admin/${history}`, { headers: { cookie } })).json();
+    const body = { version: versions[0].id, checksum: replacement.checksum };
+    assert.equal((await fetch(`${origin}/api/admin/${endpoint}`, { method: 'POST', headers: { cookie, origin, 'content-type': 'application/json' }, body: JSON.stringify(body) })).status, 403);
+    assert.equal((await adminPost(endpoint, { ...body, checksum: original.checksum })).status, 409);
+    await createUser(store, { email: 'media-viewer@example.com', name: 'Viewer', role: 'viewer', password });
+    const session = await fetch(`${origin}/api/admin/session`);
+    const viewerCookie = session.headers.getSetCookie().map((value) => value.split(';')[0]).join('; ');
+    const login = await fetch(`${origin}/api/admin/login`, { method: 'POST', headers: { cookie: viewerCookie, origin, 'x-csrf-token': (await session.json()).csrf, 'content-type': 'application/json' }, body: JSON.stringify({ email: 'media-viewer@example.com', password }) });
+    assert.equal(login.status, 200);
+    const viewerHeaders = { cookie: login.headers.getSetCookie().map((value) => value.split(';')[0]).join('; '), origin, 'x-csrf-token': (await login.json()).csrf, 'content-type': 'application/json' };
+    assert.equal((await fetch(`${origin}/api/admin/${history}`, { headers: viewerHeaders })).status, 200);
+    assert.equal((await fetch(`${origin}/api/admin/${endpoint}`, { method: 'POST', headers: viewerHeaders, body: JSON.stringify(body) })).status, 403);
+    await writeFile(media.filename(replacement), 'invalid original bytes');
+    await media.reconcile();
+    const blocked = await fetch(`${origin}${original.url}`);
+    assert.equal(blocked.status, 503);
+    assert.equal(blocked.headers.get('cache-control'), 'no-store');
+    assert.equal((await adminPost(`media/${original.id}/retry`, {})).status, 409);
+    const restored = await adminPost(endpoint, body);
+    assert.equal(restored.status, 200);
+    assert.equal((await restored.json()).asset.checksum, original.checksum);
+    assert.equal((await fetch(`${origin}${original.url}`)).status, 200);
+  } finally { await media.stop(); store.close(); }
+});
 
 test('Greek homepage has self-canonical metadata and untranslated projects have no Greek route', async () => {
   const response = await fetch(`${origin}/el/`);
@@ -202,4 +275,55 @@ test('page previews are authenticated, noindexed and contain saved drafts rather
   const published = await (await fetch(`${origin}/pages/preview-page`)).text();
   assert.match(published, /Public heading/);
   assert.equal(published.includes('Private preview heading'), false);
+});
+
+test('service editorial drafts preview in place and publish independently per locale', async () => {
+  for (const locale of ['en', 'el']) {
+    const route = `${origin}${locale === 'el' ? '/el' : ''}/services/video-production-athens`;
+    const document = { id: 'service-video-production-athens', locale, heading: `Managed ${locale} service`, intro: 'A managed introduction.', body: 'A managed production brief.', blocks: [{ type: 'text', title: 'Managed planning', text: 'Plan the approved production.' }], seo: { title: `Managed ${locale} SEO`, description: 'Approved service description.', image: '/assets/anchevlogo.png', noindex: true } };
+    const draftResponse = await adminPost('pages', document);
+    assert.equal(draftResponse.status, 200);
+    const draft = (await draftResponse.json()).saved;
+    assert.equal((await (await fetch(route)).text()).includes(document.heading), false);
+    const preview = await fetch(`${origin}/api/admin/pages/${locale}/${document.id}/preview.html`, { headers: { cookie } });
+    assert.equal(preview.status, 200);
+    const previewPage = load(await preview.text());
+    assert.equal(previewPage('#service-title').text(), document.heading);
+    assert.equal(previewPage('meta[name="robots"]').attr('content'), 'noindex,nofollow,noarchive');
+    assert.equal((await adminPost('pages', { ...draft, publish: true })).status, 200);
+    const published = load(await (await fetch(route)).text());
+    assert.equal(published('#service-title').text(), document.heading);
+    assert.equal(published('title').text(), document.seo.title);
+    assert.equal(published('meta[name="robots"]').attr('content'), 'noindex,follow');
+    const sitemap = load(await (await fetch(`${origin}/sitemap.xml`)).text(), { xml: true });
+    assert.equal(sitemap('loc').map((_index, element) => sitemap(element).text()).get().includes(route), false);
+  }
+});
+
+test('studio facts and contact copy use private bilingual editorial drafts', async () => {
+  const templates = await (await fetch(`${origin}/api/admin/page-templates`, { headers: { cookie } })).json();
+  assert.equal(templates.pages.length, 12);
+  for (const locale of ['en', 'el']) {
+    for (const id of ['studio', 'contact']) {
+      const template = templates.pages.find((page) => page.id === id && page.locale === locale);
+      const document = { ...template, heading: `Managed ${locale} ${id}`, intro: 'An approved studio or contact introduction.' };
+      const response = await adminPost('pages', document);
+      assert.equal(response.status, 200);
+      const saved = (await response.json()).saved;
+      const publicPath = `${locale === 'el' ? '/el' : ''}${id === 'studio' ? '/studio' : '/'}`;
+      assert.equal((await (await fetch(`${origin}${publicPath}`)).text()).includes(document.heading), false);
+      const preview = await fetch(`${origin}/api/admin/pages/${locale}/${id}/preview.html`, { headers: { cookie } });
+      assert.equal(preview.status, 200);
+      const previewPage = load(await preview.text());
+      assert.equal(previewPage(id === 'studio' ? '#studio-title' : '.contact-final__title').text(), document.heading);
+      assert.equal((await adminPost('pages', { ...saved, publish: true })).status, 200);
+      const published = load(await (await fetch(`${origin}${publicPath}`)).text());
+      assert.equal(published(id === 'studio' ? '#studio-title' : '.contact-final__title').text(), document.heading);
+      if (id === 'studio') assert.equal(published('.case-study__detail').length, 4);
+      else assert.equal(published('#inquiry-form').length, 1);
+      const alias = await fetch(`${origin}${locale === 'el' ? '/el' : ''}/pages/${id}`, { redirect: 'manual' });
+      assert.equal(alias.status, 301);
+      assert.equal(alias.headers.get('location'), `${publicPath}${id === 'contact' ? '#contact-page' : ''}`);
+    }
+  }
 });

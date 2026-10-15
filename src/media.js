@@ -3,7 +3,7 @@ import multer from 'multer';
 import sharp from 'sharp';
 import crypto from 'node:crypto';
 import { createReadStream, constants } from 'node:fs';
-import { mkdir, rename, rm, stat, copyFile, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, copyFile, writeFile, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -14,6 +14,7 @@ import { inspectUpload } from './security.js';
 
 const execute = promisify(execFile);
 const timestamp = () => new Date().toISOString();
+const integrityError = 'Original integrity check failed. Restore a verified original before retrying processing.';
 const metadataSchema = z.object({
   alt: z.object({ en: z.string().max(300).default(''), el: z.string().max(300).default('') }).default({ en: '', el: '' }),
   title: z.string().max(200).default(''), collection: z.string().max(100).default(''),
@@ -32,6 +33,14 @@ export class MediaService {
     this.uploadsDir = uploadsDir;
     this.busy = false;
     this.stopping = false;
+    this.replacements = new Set();
+    this.quarantined = new Set(store.db.prepare('SELECT id FROM media WHERE error=?').all(integrityError).map((asset) => asset.id));
+  }
+
+  isQuarantined(url) {
+    const normalized = path.posix.normalize(decodeURIComponent(url));
+    const asset = this.store.db.prepare('SELECT id,error FROM media WHERE id=? OR url=?').get(normalized.split('/')[2], normalized);
+    return this.quarantined.has(asset?.id) || asset?.error === integrityError;
   }
 
   async inspect(filename, type) {
@@ -56,7 +65,73 @@ export class MediaService {
     return resolved;
   }
 
-  async ingest(file, actorId, replacementId = null) {
+  async history(id) {
+    const asset = this.store.media(id);
+    if (!asset) throw Object.assign(new Error('Media not found.'), { status: 404 });
+    const directory = path.join(this.store.directory, 'media-history', asset.id);
+    const files = await readdir(directory).catch((error) => { if (error.code === 'ENOENT') return []; throw error; });
+    const versions = [];
+    for (const filename of files.filter((entry) => /^[a-f0-9-]{36}\.[a-z0-9]{2,8}\.json$/.test(entry))) {
+      const document = JSON.parse(await readFile(path.join(directory, filename), 'utf8'));
+      if (document.assetId !== id || !/^[a-f0-9]{64}$/.test(document.previousChecksum)) throw new Error('Invalid media history manifest.');
+      versions.push({ id: filename.slice(0, -5), checksum: document.previousChecksum, createdAt: document.createdAt });
+    }
+    return versions.sort((first, second) => String(second.createdAt).localeCompare(String(first.createdAt)));
+  }
+
+  async restore(id, version, expectedChecksum, actorId) {
+    const entry = (await this.history(id)).find((item) => item.id === version);
+    if (!entry) throw Object.assign(new Error('Original version not found.'), { status: 404 });
+    const original = path.join(this.store.directory, 'media-history', id, entry.id);
+    if (await checksum(original) !== entry.checksum) throw Object.assign(new Error('Archived original failed integrity verification.'), { status: 409 });
+    const incoming = path.join(this.store.directory, 'incoming');
+    await mkdir(incoming, { recursive: true });
+    const source = path.join(incoming, crypto.randomUUID());
+    await copyFile(original, source, constants.COPYFILE_EXCL);
+    const result = await this.ingest({ path: source, originalname: entry.id }, actorId, id, expectedChecksum);
+    this.store.audit(actorId, 'media.restore', 'media', id, { version: entry.id });
+    return result;
+  }
+
+  async reconcile() {
+    const results = [];
+    for (const asset of this.store.db.prepare("SELECT * FROM media WHERE url LIKE '/uploads/%'").all()) {
+      try {
+        const original = this.filename(asset);
+        const current = await checksum(original).catch((error) => { if (error.code === 'ENOENT') return null; throw error; });
+        if (current === asset.checksum && !this.quarantined.has(asset.id)) continue;
+        const entry = current === asset.checksum ? null : (await this.history(asset.id)).find((item) => item.checksum === asset.checksum);
+        if (!entry && current !== asset.checksum) throw new Error('No matching archived original.');
+        if (entry) {
+          const archived = path.join(this.store.directory, 'media-history', asset.id, entry.id);
+          if (await checksum(archived) !== asset.checksum) throw new Error('Archive checksum mismatch.');
+          const temporary = `${original}.${crypto.randomUUID()}.restore`;
+          await copyFile(archived, temporary, constants.COPYFILE_EXCL);
+          await rename(temporary, original);
+        }
+        this.quarantined.delete(asset.id);
+        this.store.db.prepare("UPDATE media SET status='queued',error=NULL WHERE id=?").run(asset.id);
+        this.store.db.prepare("UPDATE jobs SET status='queued',attempts=0,error=NULL WHERE media_id=?").run(asset.id);
+        this.store.audit(null, 'media.reconcile', 'media', asset.id);
+        results.push({ id: asset.id, recovered: true });
+      } catch (_error) {
+        const message = integrityError;
+        this.quarantined.add(asset.id);
+        this.store.db.prepare("UPDATE media SET status='failed',error=? WHERE id=?").run(message, asset.id);
+        this.store.db.prepare("UPDATE jobs SET status='failed',error=? WHERE media_id=?").run(message, asset.id);
+        this.store.audit(null, 'media.reconcile.failure', 'media', asset.id);
+        results.push({ id: asset.id, recovered: false });
+      }
+    }
+    return results;
+  }
+
+  async ingest(file, actorId, replacementId = null, expectedChecksum = null) {
+    if (replacementId && this.replacements.has(replacementId)) {
+      await rm(file.path, { force: true });
+      throw Object.assign(new Error('This original is already being replaced.'), { status: 409 });
+    }
+    if (replacementId) this.replacements.add(replacementId);
     try {
       const type = await inspectUpload(file.path);
       const details = await this.inspect(file.path, type);
@@ -68,6 +143,7 @@ export class MediaService {
       }
       const replacement = replacementId ? this.store.media(replacementId) : null;
       if (replacementId && !replacement) throw Object.assign(new Error('Media not found.'), { status: 404 });
+      if (expectedChecksum && replacement?.checksum !== expectedChecksum) throw Object.assign(new Error('This original changed. Reload before restoring.'), { status: 409 });
       if (replacement && (!replacement.url.startsWith('/uploads/') || replacement.mime !== type.mime || ['queued', 'processing'].includes(replacement.status))) throw Object.assign(new Error('Replace a ready uploaded file with the same media format.'), { status: 409 });
       if (duplicate && duplicate.id !== replacementId) throw Object.assign(new Error('This file already exists in the library.'), { status: 409 });
       const id = replacementId || crypto.randomUUID();
@@ -80,8 +156,14 @@ export class MediaService {
         const history = path.join(this.store.directory, 'media-history', id);
         await mkdir(history, { recursive: true, mode: 0o700 });
         archive = path.join(history, `${crypto.randomUUID()}.${type.ext}`);
-        await copyFile(filename, archive, constants.COPYFILE_EXCL);
-        await writeFile(`${archive}.json`, JSON.stringify({ assetId: id, originalUrl: replacement.url, previousChecksum: replacement.checksum, nextChecksum: digest, actorId, createdAt: timestamp() }), { mode: 0o600, flag: 'wx' });
+        try {
+          await copyFile(filename, archive, constants.COPYFILE_EXCL);
+          const previousChecksum = await checksum(archive);
+          await writeFile(`${archive}.json`, JSON.stringify({ assetId: id, originalUrl: replacement.url, previousChecksum, nextChecksum: digest, actorId, createdAt: timestamp() }), { mode: 0o600, flag: 'wx' });
+        } catch (error) {
+          if (error.code !== 'ENOENT' || !expectedChecksum) throw error;
+          archive = null;
+        }
       }
       await rename(file.path, filename);
       const url = replacement?.url || `/uploads/${id}/original.${type.ext}`;
@@ -102,12 +184,13 @@ export class MediaService {
         } else await rm(filename, { force: true });
         throw error;
       }
+      this.quarantined.delete(id);
       return { asset: this.store.media(id), duplicate: false };
     } catch (error) {
       await rm(file.path, { force: true }).catch(() => {});
       if (['ENOENT', 'ERR_UNSUPPORTED_FORMAT'].includes(error.code)) error.status = 415;
       throw error;
-    }
+    } finally { if (replacementId) this.replacements.delete(replacementId); }
   }
 
   async derivative(asset, kind, filename, mime, width = null, height = null) {
@@ -154,12 +237,15 @@ export class MediaService {
     this.store.db.prepare("UPDATE jobs SET status='processing',attempts=attempts+1,updated_at=? WHERE id=?").run(timestamp(), job.id);
     this.store.db.prepare("UPDATE media SET status='processing',updated_at=? WHERE id=?").run(timestamp(), job.media_id);
     try {
-      await this.process(this.store.media(job.media_id));
+      const asset = this.store.media(job.media_id);
+      if (await checksum(this.filename(asset)).catch(() => null) !== asset.checksum) throw Object.assign(new Error(integrityError), { code: 'MEDIA_INTEGRITY' });
+      await this.process(asset);
       this.store.db.prepare("UPDATE media SET status='ready',error=NULL,updated_at=? WHERE id=?").run(timestamp(), job.media_id);
       this.store.db.prepare("UPDATE jobs SET status='ready',error=NULL,updated_at=? WHERE id=?").run(timestamp(), job.id);
       this.store.audit(null, 'media.process.complete', 'media', job.media_id);
     } catch (error) {
-      const message = error.code === 'ENOENT' ? 'Original file or media processing tool is unavailable.' : 'Processing failed. Check the original and server media tools, then retry.';
+      if (error.code === 'MEDIA_INTEGRITY') this.quarantined.add(job.media_id);
+      const message = error.code === 'MEDIA_INTEGRITY' ? integrityError : error.code === 'ENOENT' ? 'Original file or media processing tool is unavailable.' : 'Processing failed. Check the original and server media tools, then retry.';
       this.store.db.prepare("UPDATE media SET status='failed',error=?,updated_at=? WHERE id=?").run(message, timestamp(), job.media_id);
       this.store.db.prepare("UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=?").run(message, timestamp(), job.id);
       this.store.audit(null, 'media.process.failure', 'media', job.media_id, { code: String(error.code || 'processing') });
@@ -200,6 +286,11 @@ export class MediaService {
       res.json({ media: assets.slice((page - 1) * 30, page * 30), total: assets.length, page, pageSize: 30 });
     });
     const limiter = rateLimit({ windowMs: 60000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
+    router.get('/media/:id/history', requirePermission('read'), asyncRoute(async (req, res) => res.json({ versions: await this.history(req.params.id) })));
+    router.post('/media/:id/restore', requirePermission('media'), limiter, asyncRoute(async (req, res) => {
+      const document = z.object({ version: z.string().regex(/^[a-f0-9-]{36}\.[a-z0-9]{2,8}$/), checksum: z.string().regex(/^[a-f0-9]{64}$/) }).parse(req.body);
+      res.json(await this.restore(req.params.id, document.version, document.checksum, req.user.id));
+    }));
     router.post('/upload', requirePermission('media'), limiter, upload.single('file'), asyncRoute(async (req, res) => {
       if (!req.file) return res.status(400).json({ error: 'Select a file.' });
       const result = await this.ingest(req.file, req.user.id);
@@ -221,6 +312,7 @@ export class MediaService {
     router.post('/media/:id/retry', requirePermission('media'), (req, res) => {
       const asset = this.store.media(req.params.id);
       if (!asset) return res.status(404).json({ error: 'Media not found.' });
+      if (this.isQuarantined(asset.url)) return res.status(409).json({ error: integrityError });
       if (asset.status !== 'failed') return res.status(409).json({ error: 'Only failed jobs can be retried.' });
       this.store.db.prepare("UPDATE jobs SET status='queued',attempts=0,error=NULL,updated_at=? WHERE media_id=?").run(timestamp(), asset.id);
       this.store.db.prepare("UPDATE media SET status='queued',error=NULL WHERE id=?").run(asset.id);

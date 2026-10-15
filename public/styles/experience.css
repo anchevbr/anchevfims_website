@@ -593,6 +593,11 @@ body:not(.at-opening) .topbar::before {
   color: #12110e;
 }
 
+html.has-js .contact-page:not(.is-media-ready) {
+  background-color: #c7a66a;
+  background-image: none;
+}
+
 .experience-heading {
   display: grid;
   grid-template-columns: minmax(14rem, 1.25fr) minmax(16rem, 1fr);
@@ -2519,6 +2524,10 @@ body:not(.at-opening) .topbar::before {
     linear-gradient(90deg, rgba(8, 8, 8, 0.94) 0%, rgba(8, 8, 8, 0.74) 100%),
     linear-gradient(180deg, rgba(8, 8, 8, 0.18), rgba(8, 8, 8, 0.72)),
     url('/media/experience/menu-texture.webp') center / cover no-repeat;
+}
+
+.menu-overlay[aria-hidden="true"] {
+  background-image: none;
 }
 
 .menu-overlay__inner {

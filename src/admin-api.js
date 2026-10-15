@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { asyncRoute, createUser, hashPassword, publicUser, requirePermission, userSchema } from './auth.js';
 import { assetUrl, externalUrl, text, slug, can, safeUrl } from './security.js';
 import { homepageFields } from '../public/scripts/modules/localization.js';
+import { sitePageTemplates } from './public-pages.js';
 
 const shortText = z.string().trim().max(250);
 export const seoSchema = z.object({
@@ -31,7 +32,7 @@ export const projectSchema = z.object({
 const pageSchema = z.object({
   id: slug, locale: z.enum(['en', 'el']), version: z.number().int().positive().optional(),
   heading: shortText.min(1), intro: text.default(''), body: text.default(''),
-  blocks: z.array(z.object({ type: z.enum(['text', 'image', 'video', 'link']), title: shortText.default(''), text: text.default(''), url: assetUrl.default(''), alt: shortText.default('') })).max(50).default([]),
+  blocks: z.array(z.object({ type: z.enum(['text', 'image', 'video', 'link', 'fact']), title: shortText.default(''), text: text.default(''), url: assetUrl.default(''), alt: shortText.default('') })).max(50).default([]),
   seo: seoSchema
 });
 const homepageCopySchema = z.object(Object.fromEntries(homepageFields.map((field) => [field.key, z.string().trim().max(field.area ? 2000 : 250).optional()])));
@@ -50,6 +51,7 @@ export const installAdminApi = (app, store) => {
   const write = requirePermission('write');
   const publish = requirePermission('publish');
   router.use(read);
+  router.get('/page-templates', (_req, res) => res.json({ pages: sitePageTemplates() }));
   router.get('/verify', (_req, res) => res.json({ ok: true }));
   router.get('/dashboard', (_req, res) => {
     const count = (table, condition = '') => store.db.prepare(`SELECT count(*) AS total FROM ${table} ${condition}`).get().total;

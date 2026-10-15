@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { load } from 'cheerio';
+import { readFile } from 'node:fs/promises';
+import { getServicePath, servicePages } from '../../public/scripts/modules/service-pages.js';
 
 test('public locales fit and optional tracking stays off until consent', async ({ page }, testInfo) => {
   const errors = [];
@@ -55,7 +57,10 @@ test('admin sign-in, draft isolation and publication work through the real UI', 
 });
 
 test('admin and public pages have no automated accessibility violations', async ({ page }) => {
-  for (const route of ['/admin', '/privacy', '/el/privacy', '/', '/el/']) {
+  test.setTimeout(90000);
+  const { projects } = await (await page.request.get('/api/projects')).json();
+  const services = servicePages.flatMap((service) => ['en', 'el'].map((language) => getServicePath(service, language)));
+  for (const route of ['/admin', '/privacy', '/el/privacy', '/', '/el/', '/studio', '/el/studio', ...services, ...projects.slice(0, 1).map((project) => `/work/${project.id}`)]) {
     await page.goto(route);
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
     expect(result.violations.map((entry) => ({ id: entry.id, nodes: entry.nodes.map((node) => node.target) }))).toEqual([]);
@@ -72,6 +77,22 @@ test('reduced motion gets a server-rendered real-film poster without downloading
   await expect(page.locator('#hero-video')).toHaveAttribute('preload', 'none');
   await expect(page.locator('#hero-video')).not.toHaveAttribute('src');
   expect(videoRequests).toEqual([]);
+});
+
+test('deferred story images load on scroll and remain usable without JavaScript', async ({ page, browser }) => {
+  await page.goto('/');
+  await page.locator('[data-consent-reject]').click();
+  await page.locator('.tagline-story').scrollIntoViewIfNeeded();
+  const first = page.locator('.tagline-story-image').first();
+  await expect.poll(() => first.evaluate((image) => image.currentSrc.includes('story-ideas') && image.naturalWidth > 1)).toBe(true);
+  const context = await browser.newContext({ javaScriptEnabled: false, baseURL: new URL(page.url()).origin, viewport: page.viewportSize() });
+  try {
+    const fallback = await context.newPage();
+    await fallback.goto('/');
+    await fallback.locator('.tagline-story').scrollIntoViewIfNeeded();
+    await expect.poll(() => fallback.locator('noscript .tagline-story-image').first().evaluate((image) => image.naturalWidth > 1)).toBe(true);
+    await expect(fallback.locator('#work-browser a[href^="/work/"]').first()).toHaveCount(1);
+  } finally { await context.close(); }
 });
 
 test('Greek legal controls show localized cookies and navigate to the canonical privacy notice', async ({ page }) => {
@@ -218,6 +239,105 @@ test('gallery and structured credits preserve the edited order', async ({ page }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test('mobile background waits for a play action and native films can be paused', async ({ page }, testInfo) => {
+  const films = [];
+  const projectRequests = [];
+  const deferredBackgrounds = [];
+  page.on('request', (request) => { if (/hero-video.*\.mp4/.test(request.url())) films.push(request.url()); });
+  page.on('request', (request) => { if (/\/api\/projects\?/.test(request.url())) projectRequests.push(request.url()); });
+  page.on('request', (request) => { if (/contact-athens|menu-texture|story-ideas|story-planned|story-brought/.test(request.url())) deferredBackgrounds.push(request.url()); });
+  await page.goto('/');
+  const toggle = page.locator('#hero-background-toggle');
+  await expect(toggle).toBeVisible();
+  expect(projectRequests).toEqual([]);
+  expect(deferredBackgrounds).toEqual([]);
+  if (testInfo.project.use.isMobile) {
+    expect(films).toEqual([]);
+    expect(await page.locator('#hero-video').getAttribute('src')).toBeNull();
+    const consent = page.getByRole('button', { name: 'Reject optional', exact: true });
+    if (await consent.isVisible()) await consent.click();
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const consent = page.getByRole('button', { name: 'Reject optional', exact: true });
+  if (await consent.isVisible()) await consent.click();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.locator('#hero-video').evaluate((video) => video.paused)).toBe(true);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.locator('#hero-video').evaluate((video) => video.paused)).toBe(true);
+});
+
+test('retained originals can be restored and reprocessed through the media console', async ({ page }, testInfo) => {
+  await signIn(page);
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('link', { name: 'Media library', exact: true }).click();
+  const filename = `restore-${testInfo.project.name}.png`;
+  const file = async (asset) => ({ name: filename, mimeType: 'image/png', buffer: await readFile(`public/assets/${asset}.png`) });
+  const uploaded = page.waitForResponse((response) => response.url().endsWith('/api/admin/upload') && response.request().method() === 'POST');
+  await page.locator('#media-upload').setInputFiles(await file('favicon-32'));
+  const { asset: original } = await (await uploaded).json();
+  const current = async () => (await (await page.request.get(`/api/admin/media?q=${filename}`)).json()).media.find((asset) => asset.id === original.id);
+  const waitReady = () => expect.poll(async () => (await current())?.status, { timeout: 15000, intervals: [750, 1000] }).toBe('ready');
+  await waitReady();
+  await page.locator(`[data-media-details="${original.id}"]`).click();
+  const replaced = page.waitForResponse((response) => response.url().endsWith(`/media/${original.id}/replace`) && response.request().method() === 'POST');
+  await page.locator('#media-replace').setInputFiles(await file('apple-touch-icon'));
+  expect((await replaced).status()).toBe(200);
+  await waitReady();
+  await page.locator(`[data-media-details="${original.id}"]`).click();
+  await expect(page.getByRole('heading', { name: 'Original versions', exact: true })).toBeVisible();
+  page.once('dialog', (confirmation) => confirmation.accept());
+  const restored = page.waitForResponse((response) => response.url().endsWith(`/media/${original.id}/restore`) && response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Restore original', exact: true }).click();
+  const result = await restored;
+  expect(result.status()).toBe(200);
+  expect((await result.json()).asset.checksum).toBe(original.checksum);
+  await waitReady();
+  expect((await current()).url).toBe(original.url);
+});
+
+test('site content editors publish services, studio facts and contact copy without draft leaks', async ({ page }, testInfo) => {
+  await signIn(page);
+  for (const [template, id, path, selector] of [
+    ['Video Production in Athens / EN', 'service-video-production-athens', '/services/video-production-athens', '#service-title'],
+    ['Anchev Studio. / EN', 'studio', '/studio', '#studio-title'],
+    ["Have something in mind? Let's make it. / EN", 'contact', '/', '.contact-final__title']
+  ]) {
+    const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await page.getByRole('link', { name: 'Pages', exact: true }).click();
+    await page.getByRole('button', { name: 'Site content', exact: true }).click();
+    await page.getByRole('button', { name: template, exact: true }).click();
+    const title = `Editorial ${id} ${testInfo.project.name}`;
+    await page.getByLabel('Page title', { exact: true }).fill(title);
+    if (id === 'studio') await page.locator('[data-block]').filter({ has: page.locator('select option[value="fact"]:checked') }).first().getByLabel('Block text', { exact: true }).fill('14 m');
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(page.locator('#page-save-state')).toContainText('Version');
+    const publicBefore = await (await page.request.get(path)).text();
+    expect(publicBefore).not.toContain(title);
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect(page.frameLocator('iframe[title="Page draft preview"]').locator(selector)).toHaveText(title);
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('button', { name: 'Publish', exact: true }).click();
+    const published = await page.context().newPage();
+    await published.goto(path);
+    await expect(published.locator(selector)).toHaveText(title);
+    if (id === 'studio') await expect(published.locator('.case-study__detail').first()).toContainText('14 m');
+    if (id === 'contact') await expect(published.locator('#inquiry-form')).toHaveCount(1);
+    expect(await published.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const consent = published.locator('[data-consent-reject]');
+    if (await consent.isVisible()) await consent.click();
+    if (id === 'contact') await published.locator('#contact-page').scrollIntoViewIfNeeded();
+    await published.screenshot({ path: testInfo.outputPath(`editorial-${id}.png`) });
+    await published.close();
+  }
+});
+
 test('homepage copy and SEO settings save through the console in both locales', async ({ page }, testInfo) => {
   page.on('dialog', (dialog) => dialog.accept());
   await signIn(page);
@@ -261,10 +381,12 @@ test('homepage copy and SEO settings save through the console in both locales', 
       await expect(preview.locator('#inquiry-form [type="submit"]')).toBeDisabled();
       await expect(preview.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,nofollow,noarchive');
       await page.screenshot({ path: testInfo.outputPath(`settings-preview-${language}.png`) });
-      await preview.locator('.language-switch a[lang="el"]').click();
-      await expect(preview.locator('.hero-positioning')).toHaveText(`el opening ${testInfo.project.name}`);
-      await preview.locator('.language-switch a[lang="en"]').click();
-      await expect(preview.locator('.hero-positioning')).toHaveText(`en opening ${testInfo.project.name}`);
+      for (const target of ['el', 'en']) {
+        const navigation = page.waitForEvent('framenavigated', { predicate: (frame) => frame.parentFrame() === page.mainFrame() && new URL(frame.url()).searchParams.get('path') === (target === 'el' ? '/el/' : '/') });
+        await preview.locator(`.language-switch a[lang="${target}"]`).click();
+        await (await navigation).waitForLoadState('domcontentloaded');
+        await expect(preview.locator('.hero-positioning')).toHaveText(`${target} opening ${testInfo.project.name}`);
+      }
       const studioLink = preview.locator('.desktop-nav a[href*="path=%2Fstudio"]');
       const studioUrl = await studioLink.getAttribute('href');
       const studio = await page.request.get(studioUrl);

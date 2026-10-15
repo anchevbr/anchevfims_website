@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
-import { escapeHtml, renderContactPageMarkup } from '../public/scripts/modules/content-markup.js';
+import { escapeHtml, renderContactPageMarkup, renderStudioPageMarkup } from '../public/scripts/modules/content-markup.js';
 import { copy, homepageFields } from '../public/scripts/modules/localization.js';
-import { servicePages } from '../public/scripts/modules/service-pages.js';
+import { servicePages, getServicePage } from '../public/scripts/modules/service-pages.js';
 import { renderLegalPanelMarkup } from '../public/scripts/modules/legal.js';
 
 const greekHome = {
@@ -77,6 +77,28 @@ const greekServices = [
   ['Προετοιμασία παραγωγής', ['Προϋπολογισμός και χρονοδιάγραμμα', 'Casting και αναζήτηση χώρων', 'Συνεργείο και εξοπλισμός', 'Σκηνογραφία και εικαστική κατεύθυνση', 'Άδειες και οργάνωση']]
 ];
 
+export const sitePageTemplates = () => {
+  const studio = load(renderStudioPageMarkup());
+  const location = studio('a[href^="https://www.google.com/maps/dir/"]').closest('section');
+  return ['en', 'el'].flatMap((locale) => {
+    const greek = locale === 'el';
+    const studioCopy = getServicePage('/el/studio').el;
+    return [
+      ...servicePages.map((service) => ({ id: `service-${service.slug}`, locale, heading: service[locale].title, intro: service[locale].intro, body: service[locale].brief, blocks: [{ type: 'image', url: '/media/studio/studio-frame-01.jpg', alt: greek ? 'Εσωτερικό στούντιο' : 'Studio interior', title: '', text: '' }, ...service[locale].sections.map(([title, text]) => ({ type: 'text', title, text, url: '', alt: '' }))] })),
+      { id: 'studio', locale, heading: greek ? studioCopy.title : 'Anchev Studio.', intro: greek ? studioCopy.intro : studio('.case-study__copy-section').first().find('p:not(.case-study__section-label)').text(), body: greek ? studioCopy.brief : studio('.case-study__copy-section').last().find('p').text(), blocks: [
+        { type: 'image', url: '/media/experience/studio-poster.jpg', alt: greek ? 'Anchev Studio' : 'Inside Anchev Studio' },
+        { type: 'video', url: '/media/experience/studio-web.mp4' },
+        ...[['Width', 'Πλάτος', '12 m'], ['Depth', 'Βάθος', '16 m'], ['Height', 'Ύψος', '5 m'], ['Approximate footprint', 'Κατά προσέγγιση αποτύπωμα', '192 sq m']].map(([en, el, text]) => ({ type: 'fact', title: greek ? el : en, text })),
+        ...(greek ? studioCopy.sections.map(([title, text]) => ({ type: 'text', title, text })) : studio('.studio-page__capabilities .case-study__copy-section').map((_index, element) => ({ type: 'text', title: studio(element).find('h2').text(), text: studio(element).find('div > p').text() })).get()),
+        ...(!greek ? [{ type: 'text', title: location.find('h2').text(), text: location.find('div > p').text() }] : []),
+        { type: 'link', title: greek ? 'Οδηγίες άφιξης' : 'Get directions', url: location.find('a').attr('href') },
+        ...[1, 2, 3].map((number) => ({ type: 'image', url: `/media/studio/studio-frame-0${number}.jpg`, alt: `${greek ? 'Εικόνα στούντιο' : 'Studio view'} ${number}` }))
+      ] },
+      { id: 'contact', locale, heading: greek ? 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.' : "Have something in mind? Let's make it.", intro: '', body: '', blocks: [] }
+    ];
+  });
+};
+
 export const renderPageBody = (page, language = 'en') => {
   const words = copy(language);
   const blocks = (page.blocks || []).map((block) => {
@@ -88,13 +110,21 @@ export const renderPageBody = (page, language = 'en') => {
   return `<article class="editorial-page"><header><a href="${language === 'el' ? '/el/' : '/'}" class="editorial-page__brand">ANCHEV FILMS</a><h1>${escapeHtml(page.heading)}</h1>${page.intro ? `<p class="editorial-page__intro">${escapeHtml(page.intro)}</p>` : ''}</header><main>${page.body ? `<p>${escapeHtml(page.body).replace(/\n/g, '<br />')}</p>` : ''}${blocks}</main><footer><a class="case-study__external" href="${language === 'el' ? '/el/#contact-page' : '/#contact-page'}">${words.startProject}</a></footer></article>`;
 };
 
-export const renderPublicDocument = (html, { language = 'en', route = '/', store, settings: settingsOverride, preview = null, home = false, project = null }) => {
+export const renderPublicDocument = (html, { language = 'en', route = '/', store, settings: settingsOverride, page: pageOverride = null, preview = null, home = false, project = null }) => {
   const $ = load(html);
   const words = copy(language);
   $('html').attr('lang', language);
+  $('head').prepend('<script>document.documentElement.classList.add("has-js")</script>');
   $('head').append('<link rel="stylesheet" href="/styles/refinements.css?v=20261015-platform" />');
   $('body').prepend(`<a class="public-skip-link" href="${home ? '#work-page' : '#project-page-root'}">${language === 'el' ? 'Μετάβαση στο περιεχόμενο' : 'Skip to content'}</a>`);
   if (home) {
+    $('.tagline-story-image').each((_index, element) => {
+      const image = $(element);
+      const fallback = $.html(element);
+      image.attr('data-near-src', image.attr('src')).attr('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+      image.after(`<noscript>${fallback}</noscript>`);
+    });
+    $('head').append('<noscript><style>img[data-near-src]{display:none}</style></noscript>');
     const contentSettings = settingsOverride || store.settings();
     const source = contentSettings.videoSource || '/media/hero-video.mp4';
     const original = store.db.prepare('SELECT id FROM media WHERE url=?').get(source);
@@ -106,6 +136,8 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
     }
     const settings = JSON.stringify(contentSettings).replace(/</g, '\\u003c');
     $('head').append(`<script id="public-settings" type="application/json">${settings}</script>`);
+    const projects = JSON.stringify(store.projects({ publicOnly: true, locale: language })).replace(/</g, '\\u003c');
+    $('head').append(`<script id="public-projects" type="application/json">${projects}</script>`);
     $('.hero h1').html('<span>Anchev</span><span class="hero-title-accent">Films.</span>');
     $('.hero h1').after('<p class="hero-positioning">Ideas, planned and brought to life.<br>Film production in Athens. Built for everywhere.</p>');
     $('.hero-kicker').text('Film production / Athens');
@@ -132,6 +164,10 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
       $('[data-service-active-name]').text(greekServices[0][0]);
       $('.podcast-episode__topline > span').each((_index, element) => $(element).text($(element).text().replace('Episode', words.episode)));
       $('.podcast-episode__footer a').text(words.openEpisode);
+      $('.article-row__action').text(words.readArticle);
+      $('.articles-empty').text(words.articlesEmpty);
+      $('.podcast-episodes__status').contents().filter((_index, node) => node.type === 'text').first().replaceWith(`${words.podcastEmpty} `);
+      $('.podcast-episodes__status a').text(words.followSpotify);
       $('[data-podcast-play]').each((_index, element) => $(element).attr('aria-label', `${words.play} ${$(element).attr('data-episode-title')}`));
       $('[data-project-id]').each((_index, element) => {
         const current = store.project($(element).attr('data-project-id'), { publicOnly: true, locale: 'el' });
@@ -153,6 +189,8 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
       const value = contentSettings.homepage?.[language]?.[field.key];
       if (typeof value === 'string' && value.trim()) $(field.selector).html(escapeHtml(value).replace(/\n/g, '<br />')).removeAttr('lang');
     }
+    const contactPage = pageOverride?.id === 'contact' ? pageOverride : store.page('contact', language, true);
+    if (contactPage) $('#contact-page-content').html(renderContactPageMarkup({ ...contentSettings.contact, social: contentSettings.social }, language, contactPage));
     const about = store.page('about', language, true);
     if (about?.heading) {
       $('#about-page-content').html(`<div class="managed-about"><p class="section-kicker">${language === 'el' ? 'Η εταιρεία' : 'About Anchev Films'}</p><h2>${escapeHtml(about.heading)}</h2><p>${escapeHtml(about.intro)}</p><p>${escapeHtml(about.body).replace(/\n/g, '<br />')}</p></div>`);
@@ -169,6 +207,13 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
       if (label) { heading.text(`${label}.`); $(element).find('.case-study__section-label').text(`${String(index + 1).padStart(2, '0')} / ${label}`); }
     });
     $('.case-study__film h2').each((_index, element) => $(element).text($(element).text() === 'The Film' ? words.film : words.behind));
+    $('.case-study__film').each((_index, element) => {
+      const title = $(element).find('h2').text();
+      $(element).find('[data-youtube-id]').attr({ 'data-film-title': title, 'aria-label': `${words.play} ${title}` });
+      $(element).find('a[href^="https://www.youtube.com/"]').text(words.watchYoutube);
+    });
+    $('.case-study__frames').attr('aria-label', words.gallery).find('img').each((index, element) => $(element).attr('alt', `${words.photograph} ${index + 1}: ${project.name}`));
+    if (!project.pressTitle) $('.case-study__copy-section a').filter((_index, element) => $(element).attr('href') === project.pressLink).text(words.readCoverage);
     $('.case-study__next-label').text(words.next);
     $('.case-study__external[href="/#contact-page"]').text(words.startProject).attr('href', '/el/#contact-page');
     const labels = { Director: words.director, Producer: words.producer, Cinematography: words.dop, Location: words.location, Duration: words.duration, Services: words.services, Deliverables: words.deliverables };
@@ -211,7 +256,8 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
   });
   $('video[data-project-preview]').attr('preload', 'none');
   $('.podcast-art').removeAttr('aria-label');
-  $('.brandmark img').attr({ width: 72, height: 72 });
+  $('.brandmark img').attr({ width: 72, height: 72, fetchpriority: 'high', loading: 'eager' });
+  if ($('.brandmark img').length) $('head').append('<link rel="preload" as="image" href="/assets/anchevlogo.png" fetchpriority="high" />');
   if (preview) {
     $('html').attr('data-settings-preview', String(preview.version));
     $('#consent-banner, #consent-preferences').attr('hidden', '');
@@ -219,7 +265,7 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
     $('a[href]').each((_index, element) => {
       const link = $(element);
       const href = link.attr('href');
-      if (!href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/') || /\.[a-z0-9]+(?:$|[?#])/i.test(href)) return;
+      if (!preview.version || !href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/') || /\.[a-z0-9]+(?:$|[?#])/i.test(href)) return;
       const target = new URL(href, 'https://preview.invalid');
       link.attr('href', `/api/admin/settings/preview.html?version=${preview.version}&path=${encodeURIComponent(target.pathname)}${target.hash}`);
     });

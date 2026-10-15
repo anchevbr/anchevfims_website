@@ -9,11 +9,11 @@ Use Node 24 LTS, npm, FFmpeg and FFprobe. Install dependencies with `npm ci`.
 - `npm run preview`: isolated local content copy with a test-only owner account. Never use this account or script in production.
 - `npm run dev`: normal local server using your environment and persistent data.
 - `npm test`: unit and integration tests with temporary databases.
-- `npm run test:browser`: isolated desktop/mobile Playwright and targeted axe checks; install Chromium with `npx playwright install chromium` first.
+- `npm run test:browser`: isolated desktop Chromium, mobile Chromium and mobile WebKit workflows with targeted axe checks; install engines with `npx playwright install chromium webkit` first.
 - `npm run lint`: lint the new platform, admin and test modules.
 - `npm run check:seo`: HTTP SEO checks against `CHECK_URL` (default `http://localhost:3011`).
 
-The public app does not require a bundler. Security-sensitive processing and persistence are server-only.
+Development serves the editable public modules directly. Production compiles minified CSS/JavaScript once at startup with the runtime esbuild dependency, serving content-hashed immutable URLs; no separate build artifact or build command is required. Use `BUNDLE_PUBLIC_ASSETS=1 npm run preview` to exercise that delivery path locally. Bundling failures prevent readiness. Licensed fonts are served from installed Fontsource packages without Google Fonts requests. Security-sensitive processing and persistence are server-only.
 
 ## Private Configuration
 

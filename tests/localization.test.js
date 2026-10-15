@@ -4,8 +4,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ContentStore } from '../src/database.js';
-import { renderPageBody, renderPublicDocument } from '../src/public-pages.js';
-import { renderContactPageMarkup } from '../public/scripts/modules/content-markup.js';
+import { renderPageBody, renderPublicDocument, sitePageTemplates } from '../src/public-pages.js';
+import { renderContactPageMarkup, renderArticlesMarkup, renderPodcastEpisodeMarkup, renderProjectSupportingMarkup } from '../public/scripts/modules/content-markup.js';
+import { getServicePage, getServicePath, servicePages } from '../public/scripts/modules/service-pages.js';
 import { settingsSchema } from '../src/admin-api.js';
 import { load } from 'cheerio';
 
@@ -31,6 +32,15 @@ test('structured content and localized inquiries escape untrusted content', () =
   assert.ok(html.includes('&lt;script&gt;'));
   assert.ok(renderContactPageMarkup({ email: 'test@example.com' }, 'el').includes('Αποστολή αιτήματος'));
   assert.ok(renderContactPageMarkup({ email: 'test@example.com' }, 'en').includes('Send inquiry'));
+  assert.match(renderArticlesMarkup([{ url: 'https://example.com', title: 'Article', publishedAt: '2026-01-15' }], 'el'), /Ιαν/);
+  assert.match(renderPodcastEpisodeMarkup({ title: 'Episode', duration: '01:15:00' }, 0, 'https://example.com', 'el'), /1 ώρ. 15 λεπ./);
+  assert.match(renderProjectSupportingMarkup({ behindVideo: 'https://youtu.be/lINECZrijtg' }, 'el'), /Δείτε στο YouTube/);
+  const template = sitePageTemplates().find((page) => page.id === 'studio' && page.locale === 'en');
+  assert.ok(template.blocks.some((block) => block.text?.includes('Apostolou Rapti 5')));
+  assert.ok(template.blocks.some((block) => block.url?.startsWith('https://www.google.com/maps/dir/')));
+  const video = { type: 'video', url: '/media/film.mp4' };
+  const hero = { type: 'image', url: '/media/hero.jpg' };
+  assert.deepEqual(getServicePage(getServicePath(servicePages[0]), { heading: 'Film', intro: '', body: '', blocks: [video, hero] }).mediaBlocks, [video]);
 });
 
 test('homepage CMS copy is locale-specific, escaped and falls back when empty', async () => {

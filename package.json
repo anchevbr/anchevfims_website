@@ -20,8 +20,13 @@
     "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
+    "@fontsource-variable/bodoni-moda": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@fontsource/gfs-didot": "^5.3.0",
     "better-sqlite3": "^13.0.3",
     "cheerio": "^1.2.0",
+    "compression": "^1.8.2",
+    "esbuild": "^0.28.2",
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.1",
     "express-session": "^1.19.0",

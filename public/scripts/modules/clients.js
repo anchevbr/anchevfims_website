@@ -1,9 +1,10 @@
 import { siteContent } from '/scripts/content.js';
-import { renderClientsMarkup } from '/scripts/modules/content-markup.js?v=20261006-index';
+import { renderClientsMarkup } from '/scripts/modules/content-markup.js';
 
 export const renderClients = async () => {
   const root = document.getElementById('clients-field');
   if (!root) return;
+  if (root.childElementCount) return;
 
   let clients = siteContent.clients;
   try {
