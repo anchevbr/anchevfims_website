@@ -1,5 +1,17 @@
 # Search Visibility Follow-Up
 
+## Cinematic Redesign Candidate
+
+The dedicated `feat/cinematic-news-redesign` branch builds on the unmerged platform candidate, not the production release described below. It is intended as a dependent PR against `feat/platform-hardening` (PR #1). No production deployment, main merge, live content replacement or infrastructure change is authorized by this work.
+
+The new public hierarchy has bilingual `/work`, `/services`, `/about`, `/contact`, `/press`, `/podcast` and secondary `/news` indexes, plus existing Studio, project and podcast episode URLs. Eight main service categories have distinct substantive English/Greek pages: commercial production, branded content, corporate video, film/documentary production, events/live production, production services in Greece, post-production and photography. Existing `/services/video-production-athens` and `/services/live-streaming-athens` destinations remain valid, not redirected into an unrelated page. Published Contact/About CMS aliases now redirect to their dedicated canonical destinations; homepage section anchors still work.
+
+News uses `/news/<slug>` and `/el/news/<slug>`. Only due published snapshots are readable or listed; drafts, schedules, previews, archived and noindex stories are excluded as appropriate. Article metadata includes published/modified dates, canonical/social values, BlogPosting and breadcrumbs. Published language counterparts receive reciprocal alternates. There is no fabricated seed content or empty category-archive expansion. `/pages/news-*` aliases redirect only for due public documents and are absent from the sitemap. Existing external press coverage stays separate from original News.
+
+`CHECK_URL=http://localhost:3016 npm run check:seo` passes 40 canonical URLs in the isolated bundled preview, with distinct titles, one H1, descriptions, language pairs, JSON-LD, sitemap membership, unique sitemap URLs, slash redirects/query preservation and genuine noindex 404s. Due articles are automatically included when present; draft/scheduled article isolation and exact publication boundaries are independently covered by server/database/API tests. Public HTML, News API and sitemap are no-store so a schedule does not require an application restart or stale-cache purge.
+
+Standard sequential Lighthouse lab measurements for this candidate: English mobile 95/100/100/100, Greek mobile 93/100/100/100, desktop 100/100/100/100 (performance/accessibility/best practices/SEO). Mobile LCP is 2.9 s in both languages, still above 2.5 s; desktop LCP is 0.6 s. These results do not certify production Core Web Vitals, rankings, rich-result eligibility or indexing. Full implementation/test evidence and remaining staging/editorial/legal gates are in [PLATFORM.md](PLATFORM.md).
+
 ## Implemented
 
 - Four server-rendered service pages under `/services/`: video production in Athens, corporate video production, production services in Greece, and event filming/live streaming.

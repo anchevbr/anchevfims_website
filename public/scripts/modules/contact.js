@@ -62,6 +62,9 @@ export const renderContact = () => {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (document.documentElement.hasAttribute('data-settings-preview')) return;
+    if (form.dataset.sending === 'true') return;
+    form.dataset.sending = 'true';
+    form.elements.submissionId.value ||= crypto.randomUUID();
     const words = copy();
     const submit = form.querySelector('[type="submit"]');
     const status = document.getElementById('inquiry-status');
@@ -77,6 +80,6 @@ export const renderContact = () => {
       window.dispatchEvent(new CustomEvent('anchev:inquiry-received'));
     } catch {
       status.textContent = words.error;
-    } finally { submit.disabled = false; submit.textContent = words.send; }
+    } finally { delete form.dataset.sending; submit.disabled = false; submit.textContent = words.send; }
   });
 };

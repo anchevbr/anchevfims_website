@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { load } from 'cheerio';
 
 const parse = (value, fallback = null) => value ? JSON.parse(value) : fallback;
 const now = () => new Date().toISOString();
@@ -215,6 +216,10 @@ export class ContentStore {
     this.db.prepare('DELETE FROM media_usage WHERE entity_type=? AND entity_id=?').run(entityType, entityId);
     const visit = (value, field) => {
       if (typeof value === 'string') {
+        if (field === 'richContent') {
+          const markup = load(value);
+          markup('img[src],a[href]').each((index, element) => visit(markup(element).attr('src') || markup(element).attr('href'), `richContent.${index}`));
+        }
         const asset = this.db.prepare('SELECT id FROM media WHERE url=? UNION SELECT media_id AS id FROM media_derivatives WHERE url=?').get(value, value);
         if (asset) this.db.prepare('INSERT OR IGNORE INTO media_usage(media_id,entity_type,entity_id,field) VALUES (?,?,?,?)').run(asset.id, entityType, entityId, field);
       } else if (Array.isArray(value)) value.forEach((entry, index) => visit(entry, `${field}.${index}`));
@@ -309,9 +314,19 @@ export class ContentStore {
 
   clients() { return this.db.prepare('SELECT name FROM clients ORDER BY position').all().map((row) => row.name); }
   articles() { return this.db.prepare('SELECT document FROM articles ORDER BY published_at DESC').all().map((row) => parse(row.document)); }
-  page(id, locale = 'en', publicOnly = false) {
+  news({ locale = 'en', publicOnly = true, timestamp = Date.now() } = {}) {
+    return this.db.prepare("SELECT id FROM pages WHERE locale=? AND id LIKE 'news-%'").all(locale)
+      .map(({ id }) => this.page(id, locale, publicOnly, timestamp)).filter((page) => page?.kind === 'news')
+      .sort((first, second) => String(second.publicationDate || '').localeCompare(String(first.publicationDate || '')));
+  }
+  page(id, locale = 'en', publicOnly = false, timestamp = Date.now()) {
     const row = this.db.prepare('SELECT * FROM pages WHERE id=? AND locale=?').get(id, locale);
-    return row && (!publicOnly || row.published) ? { ...parse(publicOnly ? row.published : row.draft, {}), id, locale, version: row.version, updatedAt: row.updated_at, isPublished: Boolean(row.published) } : null;
+    if (!row || (publicOnly && !row.published)) return null;
+    const document = parse(publicOnly ? row.published : row.draft, {});
+    const snapshot = parse(row.published);
+    if (publicOnly && document.kind === 'news' && (!Number.isFinite(Date.parse(document.publicationDate)) || Date.parse(document.publicationDate) > timestamp)) return null;
+    const status = row.published ? (snapshot?.kind === 'news' && Date.parse(snapshot.publicationDate) > timestamp ? 'scheduled' : 'published') : document.status === 'archived' ? 'archived' : 'draft';
+    return { ...document, id, locale, version: row.version, updatedAt: publicOnly ? document.modifiedAt || row.updated_at : row.updated_at, isPublished: Boolean(row.published), ...(document.kind === 'news' ? { status } : {}) };
   }
   savePage(input, actor, publish = false) {
     return this.db.transaction(() => {
@@ -319,6 +334,10 @@ export class ContentStore {
       if (current && current.version !== input.version) throw conflict();
       if (current) this.db.prepare('INSERT INTO revisions(entity_type,entity_id,document,actor_id,created_at) VALUES (?,?,?,?,?)').run('page', `${input.locale}:${input.id}`, current.draft, actor, now());
       const { version, updatedAt, isPublished, ...document } = input;
+      if (document.kind === 'news') {
+        document.createdAt = parse(current?.draft)?.createdAt || now();
+        document.modifiedAt = now();
+      }
       const payload = JSON.stringify(document);
       const published = publish ? payload : current?.published || null;
       this.db.prepare('INSERT INTO pages(id,locale,draft,published,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(id,locale) DO UPDATE SET draft=excluded.draft,published=excluded.published,version=pages.version+1,updated_at=excluded.updated_at')
@@ -328,7 +347,7 @@ export class ContentStore {
       return this.page(input.id, input.locale);
     })();
   }
-  retirePage(id, locale, version, actor, remove = false) {
+  retirePage(id, locale, version, actor, remove = false, archive = false) {
     return this.db.transaction(() => {
       const current = this.db.prepare('SELECT * FROM pages WHERE id=? AND locale=?').get(id, locale);
       if (!current) throw Object.assign(new Error('Page not found.'), { status: 404 });
@@ -340,10 +359,12 @@ export class ContentStore {
         this.db.prepare('DELETE FROM pages WHERE id=? AND locale=?').run(id, locale);
         this.db.prepare('DELETE FROM media_usage WHERE entity_type=? AND entity_id=?').run('page', `${locale}:${id}`);
       } else {
-        this.db.prepare('UPDATE pages SET published=NULL,version=version+1,updated_at=? WHERE id=? AND locale=?').run(now(), id, locale);
-        this.syncUsage('page', `${locale}:${id}`, parse(current.draft));
+        const draft = parse(current.draft);
+        if (draft.kind === 'news') draft.status = archive ? 'archived' : 'draft';
+        this.db.prepare('UPDATE pages SET published=NULL,draft=?,version=version+1,updated_at=? WHERE id=? AND locale=?').run(JSON.stringify(draft), now(), id, locale);
+        this.syncUsage('page', `${locale}:${id}`, draft);
       }
-      this.audit(actor, remove ? 'page.delete' : 'page.unpublish', 'page', `${locale}:${id}`);
+      this.audit(actor, remove ? 'page.delete' : archive ? 'page.archive' : 'page.unpublish', 'page', `${locale}:${id}`);
       return this.page(id, locale);
     })();
   }

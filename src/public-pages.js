@@ -3,6 +3,7 @@ import { escapeHtml, renderContactPageMarkup, renderStudioPageMarkup } from '../
 import { copy, homepageFields } from '../public/scripts/modules/localization.js';
 import { servicePages, getServicePage } from '../public/scripts/modules/service-pages.js';
 import { renderLegalPanelMarkup } from '../public/scripts/modules/legal.js';
+import { applyCinemaDesign } from './cinema.js';
 
 const greekHome = {
   '.hero-kicker': 'Κινηματογραφική παραγωγή / Αθήνα',
@@ -84,7 +85,7 @@ export const sitePageTemplates = () => {
     const greek = locale === 'el';
     const studioCopy = getServicePage('/el/studio').el;
     return [
-      ...servicePages.map((service) => ({ id: `service-${service.slug}`, locale, heading: service[locale].title, intro: service[locale].intro, body: service[locale].brief, blocks: [{ type: 'image', url: '/media/studio/studio-frame-01.jpg', alt: greek ? 'Εσωτερικό στούντιο' : 'Studio interior', title: '', text: '' }, ...service[locale].sections.map(([title, text]) => ({ type: 'text', title, text, url: '', alt: '' }))] })),
+      ...servicePages.map((service) => ({ id: `service-${service.slug}`, locale, heading: service[locale].title, intro: service[locale].intro, body: service[locale].brief, blocks: [{ type: 'image', url: service.heroImage || '/media/studio/studio-frame-01.jpg', alt: service.heroAlt || (greek ? 'Εσωτερικό στούντιο' : 'Studio interior'), title: '', text: '' }, ...service[locale].sections.map(([title, text]) => ({ type: 'text', title, text, url: '', alt: '' })), ...(service[locale].capabilities || []).map((text) => ({ type: 'fact', title: greek ? 'Δυνατότητα' : 'Capability', text }))] })),
       { id: 'studio', locale, heading: greek ? studioCopy.title : 'Anchev Studio.', intro: greek ? studioCopy.intro : studio('.case-study__copy-section').first().find('p:not(.case-study__section-label)').text(), body: greek ? studioCopy.brief : studio('.case-study__copy-section').last().find('p').text(), blocks: [
         { type: 'image', url: '/media/experience/studio-poster.jpg', alt: greek ? 'Anchev Studio' : 'Inside Anchev Studio' },
         { type: 'video', url: '/media/experience/studio-web.mp4' },
@@ -94,7 +95,16 @@ export const sitePageTemplates = () => {
         { type: 'link', title: greek ? 'Οδηγίες άφιξης' : 'Get directions', url: location.find('a').attr('href') },
         ...[1, 2, 3].map((number) => ({ type: 'image', url: `/media/studio/studio-frame-0${number}.jpg`, alt: `${greek ? 'Εικόνα στούντιο' : 'Studio view'} ${number}` }))
       ] },
-      { id: 'contact', locale, heading: greek ? 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.' : "Have something in mind? Let's make it.", intro: '', body: '', blocks: [] }
+      { id: 'contact', locale, heading: greek ? 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.' : "Have something in mind? Let's make it.", intro: '', body: '', blocks: [] },
+      { id: 'about', locale, heading: 'Anchev Films.', intro: greek ? 'Ανεξάρτητη εταιρεία κινηματογραφικής και οπτικοακουστικής παραγωγής με βάση την Αθήνα και συνεργασίες στην Ελλάδα και διεθνώς.' : 'An independent film and audiovisual production company based in Athens, working with brands, agencies and collaborators in Greece and internationally.', body: '', blocks: greek ? [
+        { type: 'text', title: 'Η φιλοδοξία χρειάζεται σχέδιο.', text: 'Μια καλή ιδέα χρειάζεται ένα πλάνο που να αντέχει στις απαιτήσεις του προϋπολογισμού, του χρόνου, των χώρων και της ομάδας. Ορίζουμε νωρίς την κατεύθυνση και οργανώνουμε την παραγωγή γύρω από το έργο.' },
+        { type: 'text', title: 'Η παραγωγή δίνει ρυθμό.', text: 'Φέρνουμε τους σωστούς ανθρώπους στη συζήτηση από την αρχή και κρατάμε κοντά τη δημιουργική πρόθεση με την εκτέλεση. Έτσι η ιδέα διατηρεί τον χαρακτήρα της μέχρι την παράδοση.' },
+        { type: 'text', title: 'Μέχρι την τελική παράδοση.', text: 'Από το πρώτο treatment έως το τελικό αρχείο, κάθε επιλογή υπηρετεί την ταινία. Σχεδιάζουμε για διαφορετικά κοινά, κανάλια και αγορές.' }
+      ] : [
+        { type: 'text', title: 'Ambition needs a way through.', text: 'A good idea needs a plan that can carry it through the realities of budget, schedule, location and people. We build the structure early: one clear direction, the right team and a production plan that keeps the work moving.' },
+        { type: 'text', title: 'Production should create momentum.', text: 'We bring the right people into the conversation early and keep creative intent close to execution. The production moves forward without losing the character of the idea.' },
+        { type: 'text', title: 'Through to delivery.', text: 'From the first treatment to the final file, each choice serves the film. We plan for its life across audiences, channels and markets.' }
+      ] }
     ];
   });
 };
@@ -233,12 +243,14 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
     });
   }
   const pageId = route.match(/^\/(?:el\/)?pages\/([a-z0-9-]+)$/)?.[1];
-  const hasCounterpart = home || Boolean(project?.hasGreek) || /^\/(?:el\/)?(?:studio|privacy)$/.test(route) || /^\/(?:el\/)?services\//.test(route) || Boolean(pageId && store.page(pageId, language === 'el' ? 'en' : 'el', true));
+  const newsId = route.match(/^\/(?:el\/)?news\/([a-z0-9-]+)$/)?.[1];
+  const hasCounterpart = home || Boolean(project?.hasGreek) || /^\/(?:el\/)?(?:studio|privacy|work|services|about|contact|press|podcast|news)$/.test(route) || /^\/(?:el\/)?services\//.test(route) || Boolean(pageId && store.page(pageId, language === 'el' ? 'en' : 'el', true)) || Boolean(newsId && store.page(`news-${newsId}`, language === 'el' ? 'en' : 'el', true));
   const counterpart = hasCounterpart ? language === 'el' ? route.replace(/^\/el(?=\/|$)/, '') || '/' : `/el${route === '/' || route === '/index.html' ? '/' : route}` : null;
   const languageLinks = `<nav class="language-switch" aria-label="${language === 'el' ? 'Γλώσσα' : 'Language'}"><a href="${language === 'el' ? counterpart || '/' : route}" lang="en" ${language === 'en' ? 'aria-current="page"' : ''}>EN</a>${counterpart || language === 'el' ? `<a href="${language === 'el' ? route : counterpart}" lang="el" ${language === 'el' ? 'aria-current="page"' : ''}>EL</a>` : ''}</nav>`;
   if ($('.topbar-actions').length) $('.topbar-actions').prepend(languageLinks);
   else if ($('.case-study__header').length) $('.case-study__header').prepend(languageLinks);
   else $('.editorial-page > header').prepend(languageLinks);
+  applyCinemaDesign($, { language, route, home, store, settings: settingsOverride || store.settings(), languageLinks });
   $('img').each((_index, element) => {
     const image = $(element);
     const url = image.attr('src');

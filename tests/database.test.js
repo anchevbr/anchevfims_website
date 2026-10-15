@@ -77,6 +77,30 @@ test('inquiry retention configuration rejects invalid or unbounded durations', (
   for (const value of ['NaN', '0', '-1', '1.5', '3651', 'Infinity']) assert.throws(() => parseInquiryRetentionDays(value), /INQUIRY_RETENTION_DAYS/);
 });
 
+test('news uses page snapshots, isolates drafts and publishes exactly at its UTC boundary', async () => {
+  const { store, cleanup } = await fixture();
+  const boundary = Date.parse('2026-11-01T10:00:00Z');
+  try {
+    store.db.prepare('INSERT INTO media(id,url,filename,mime,bytes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run('article-image', '/uploads/article.jpg', 'article.jpg', 'image/jpeg', 100, 'ready', new Date().toISOString(), new Date().toISOString());
+    let article = store.savePage({ id: 'news-studio-update', locale: 'en', kind: 'news', heading: 'Studio update', publicationDate: new Date(boundary).toISOString(), richContent: '<p><img src="/uploads/article.jpg" alt="On set"></p>', blocks: [] }, null);
+    assert.equal(store.media('article-image').usage[0].entity_id, 'en:news-studio-update');
+    assert.equal(store.news({ timestamp: boundary }).length, 0);
+    article = store.savePage(article, null, true);
+    assert.equal(store.page(article.id, 'en', true, boundary - 1), null);
+    assert.equal(store.news({ timestamp: boundary - 1 }).length, 0);
+    assert.equal(store.news({ timestamp: boundary })[0].heading, 'Studio update');
+    assert.equal(store.news({ locale: 'el', timestamp: boundary }).length, 0);
+    const publishedModified = store.page(article.id, 'en', true, boundary).updatedAt;
+    article = store.savePage({ ...article, heading: 'Private revision' }, null);
+    assert.equal(store.news({ timestamp: boundary })[0].heading, 'Studio update');
+    assert.equal(store.page(article.id, 'en', true, boundary).updatedAt, publishedModified);
+    assert.throws(() => store.savePage({ ...article, version: 1 }, null), { status: 409 });
+    store.retirePage(article.id, 'en', article.version, null);
+    assert.equal(store.news({ timestamp: boundary }).length, 0);
+    assert.ok(store.db.prepare("SELECT count(*) AS total FROM revisions WHERE entity_type='page'").get().total > 0);
+  } finally { await cleanup(); }
+});
+
 test('settings drafts survive database reopening and unchanged startup seeding', async () => {
   const { store, directory, cleanup } = await fixture();
   let reopened;

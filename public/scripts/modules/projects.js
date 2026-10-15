@@ -79,6 +79,7 @@ const bindPreviewPlayback = (card) => {
   if (!video || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
 
   const play = () => {
+    if (document.hidden || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     if (!video.src && video.dataset.src) video.src = video.dataset.src;
     video.play().catch(() => undefined);
   };
@@ -90,6 +91,7 @@ const bindPreviewPlayback = (card) => {
   card.addEventListener('pointerleave', pause);
   card.addEventListener('focusin', play);
   card.addEventListener('focusout', pause);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
 };
 
 const createTransitionCover = (project, sourceCard, direction = 'open') => {

@@ -50,7 +50,7 @@ const empty = (message) => `<p class="empty">${escapeHtml(message)}</p>`;
 const navigation = [
   ['dashboard', 'Dashboard', 'layout-dashboard', 'read'], ['projects', 'Projects', 'clapperboard', 'read'],
   ['media', 'Media library', 'images', 'read'], ['pages', 'Pages', 'panels-top-left', 'read'],
-  ['seo', 'SEO manager', 'search-check', 'read'], ['articles', 'Articles / press', 'newspaper', 'read'],
+  ['news', 'News', 'newspaper', 'read'], ['seo', 'SEO manager', 'search-check', 'read'], ['articles', 'Articles / press', 'book-open', 'read'],
   ['clients', 'Clients', 'building-2', 'read'], ['inquiries', 'Inquiries', 'inbox', 'inquiries'],
   ['users', 'Users', 'users', 'users'], ['settings', 'Settings', 'settings-2', 'read'], ['activity', 'Activity', 'history', 'read']
 ];
@@ -217,7 +217,7 @@ const mediaPicker = async (target) => {
 };
 
 const pagesView = async () => {
-  state.pages = (await api('/pages')).pages;
+  state.pages = (await api('/pages')).pages.filter((page) => page.kind !== 'news');
   return `${heading('Pages', can('write') ? `${button('Site content', 'panels-top-left', 'data-site-content')}${button('New page', 'plus', 'data-new-page', true)}` : '')}${state.pages.length ? `<div class="table-wrap"><table><thead><tr><th>Page</th><th>Language</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>${state.pages.map((page) => `<tr><td>${escapeHtml(page.heading)}</td><td>${page.locale.toUpperCase()}</td><td>${badge(page.isPublished ? 'published' : 'draft')}</td><td>${date(page.updatedAt)}</td><td>${iconButton('Edit page', 'pencil', `data-edit-page="${page.locale}:${page.id}"`)}</td></tr>`).join('')}</tbody></table></div>` : empty('No custom pages yet.')}`;
 };
 const pageEditor = (page = {}) => {
@@ -266,6 +266,65 @@ const articleEditor = (article = {}) => {
   showDialog(article.title || 'New article', `<form id="article-form"><div class="form-grid">${field('Title', 'title', article.title, { required: true })}${field('Identifier', 'id', article.id, { required: true })}${field('Publisher', 'publisher', article.publisher)}${field('Published date', 'publishedAt', article.publishedAt || new Date().toISOString().slice(0, 10), { type: 'date' })}${field('Article URL', 'url', article.url, { required: true, wide: true })}${field('Summary', 'summary', article.summary, { area: true, wide: true })}<div class="field"><label for="article-language">Language</label><select id="article-language" name="language"><option value="en">English</option><option value="el" ${article.language === 'el' ? 'selected' : ''}>Greek</option></select></div></div><footer class="form-footer">${can('publish') ? `${article.id ? button('Delete', 'trash-2', 'data-delete-article') : ''}<button type="submit" class="button button--primary">Save article</button>` : ''}</footer></form>`);
 };
 const clientsView = async () => `${heading('Clients')}<form id="clients-form">${field('Client names', 'clients', (await api('/clients')).clients.join('\n'), { area: true })}<footer class="form-footer">${can('settings') ? '<button type="submit" class="button button--primary">Save clients</button>' : ''}</footer></form>`;
+
+const localPublicationTime = (value) => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: state.newsTimeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(value || Date.now())).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+const newsView = async () => {
+  const data = await api('/news');
+  state.news = data.news; state.newsTimeZone = data.timeZone; state.newsCategories = data.categories; state.newsServices = data.services;
+  state.projects = (await api('/projects')).projects;
+  return `${heading('News', can('write') ? button('New article', 'plus', 'data-new-news', true) : '')}${data.news.length ? `<div class="table-wrap"><table><thead><tr><th>Article</th><th>Language</th><th>Status</th><th>Publication</th><th></th></tr></thead><tbody>${data.news.map((article) => `<tr data-news-row="${article.locale}:${article.id}"><td><button class="row-title" type="button" data-edit-news="${article.locale}:${article.id}">${escapeHtml(article.heading)}</button></td><td>${article.locale.toUpperCase()}</td><td>${badge(article.status)}</td><td>${date(article.publicationDate)}</td><td>${iconButton('Edit article', 'pencil', `data-edit-news="${article.locale}:${article.id}"`)}</td></tr>`).join('')}</tbody></table></div>` : empty('No company news yet. External press coverage remains in Articles / press.')}`;
+};
+const showNewsEditor = async (article = {}) => {
+  if (!window.Quill) {
+    await (showNewsEditor.loading ||= new Promise((resolve, reject) => {
+      const script = document.createElement('script'); script.src = '/vendor/quill.js';
+      script.onload = resolve; script.onerror = () => { showNewsEditor.loading = null; reject(new Error('The article editor could not load. Please retry.')); }; document.head.append(script);
+    }));
+  }
+  state.newsArticle = article;
+  const language = article.locale || 'en';
+  const actions = `${button('Back', 'arrow-left', 'data-view="news"')}${article.version ? button('Preview', 'eye', 'data-preview-news') + button('Revisions', 'history', 'data-news-revisions') + (can('write') ? button(language === 'en' ? 'Greek version' : 'English version', 'languages', 'data-translate-news') : '') : ''}`;
+  document.getElementById('console-main').innerHTML = `${heading(article.heading || 'New article', actions, `News / ${article.status || 'draft'}`)}<form id="news-form"><div class="form-grid">
+    ${field('Headline', 'heading', article.heading, { required: true, wide: true })}${field('URL slug', 'slug', article.id?.slice(5), { required: true })}
+    <div class="field"><label for="news-locale">Language</label><select id="news-locale" name="locale" ${article.version ? 'disabled' : ''}><option value="en">English</option><option value="el" ${language === 'el' ? 'selected' : ''}>Greek</option></select></div>
+    ${field(`Publish at (${state.newsTimeZone})`, 'publicationLocal', localPublicationTime(article.publicationDate), { type: 'datetime-local' })}
+    <div class="field"><label for="news-category">Category</label><select id="news-category" name="category">${Object.entries(state.newsCategories).map(([key, labels]) => `<option value="${key}" ${article.category === key ? 'selected' : ''}>${escapeHtml(labels[0])}</option>`).join('')}</select></div>
+    ${field('Author / organisation', 'author', article.author || 'Anchev Films')}${field('Excerpt', 'intro', article.intro, { area: true, wide: true })}
+    ${field('Featured image', 'thumbnail', article.thumbnail, { asset: true })}${field('Featured image alt text', 'imageAlt', article.imageAlt)}
+    ${can('media') ? `<div class="field"><label for="news-upload">Upload featured image</label><input id="news-upload" type="file" accept="image/jpeg,image/png,image/webp,image/avif" /><progress class="progress" id="upload-progress" value="0" max="100" hidden></progress></div>` : ''}
+  </div><section class="form-section news-editor"><h2 id="news-editor-label">Article content</h2><div id="news-editor"></div></section>
+  <section class="form-section"><h2>Media & related content</h2><div class="form-grid">${field('Film URL (optional)', 'video', article.video, { asset: true })}</div><div class="form-grid"><fieldset class="news-related"><legend>Related projects</legend>${state.projects.filter((project) => project.status === 'published').map((project) => checkbox(project.name, 'relatedProjects', article.relatedProjects?.includes(project.id)).replace('name="relatedProjects"', `name="relatedProjects" value="${escapeHtml(project.id)}"`)).join('')}</fieldset><fieldset class="news-related"><legend>Related services</legend>${state.newsServices.map((service) => checkbox(service.title, 'relatedServices', article.relatedServices?.includes(service.slug)).replace('name="relatedServices"', `name="relatedServices" value="${service.slug}"`)).join('')}</fieldset></div></section>
+  <section class="form-section"><h2>Search & social</h2><div class="form-grid">${field('SEO title', 'seo.title', article.seo?.title)}${field('SEO description', 'seo.description', article.seo?.description, { area: true })}${field('Social image', 'seo.image', article.seo?.image, { asset: true })}${checkbox('Exclude from search indexing', 'seo.noindex', article.seo?.noindex)}</div></section>
+  <footer class="form-footer"><span id="news-save-state" class="save-state">${article.version ? `Version ${article.version} / ${article.status}` : 'Not saved'}</span>${can('write') ? '<button class="button" type="submit">Save draft</button>' : ''}${can('publish') ? button('Publish / schedule', 'send', 'data-publish-news', true) : ''}${can('publish') && article.isPublished ? button('Unpublish', 'archive', 'data-retire-news="unpublish"') : ''}</footer></form>${can('publish') && article.version ? `<section class="form-section"><div class="actions">${button('Archive', 'archive', 'data-retire-news="archive"')}${button('Delete article', 'trash-2', 'data-retire-news="delete"')}</div></section>` : ''}`;
+  if (article.version) document.getElementById('field-slug').readOnly = true;
+  state.newsEditor = new window.Quill('#news-editor', { theme: 'snow', readOnly: !can('write'), modules: { toolbar: can('write') ? { container: [[{ header: [2, 3, false] }], ['bold', 'italic', 'blockquote'], [{ list: 'ordered' }, { list: 'bullet' }], ['link', 'image'], ['clean']], handlers: { image: () => { state.newsSelection = state.newsEditor.getSelection(true)?.index || 0; mediaPicker('news-inline-image').catch((error) => notify(error.message, true)); } } } : false } });
+  state.newsEditor.clipboard.dangerouslyPasteHTML(article.richContent || (article.body ? `<p>${escapeHtml(article.body)}</p>` : ''));
+  state.newsEditor.root.setAttribute('role', 'textbox'); state.newsEditor.root.setAttribute('aria-multiline', 'true'); state.newsEditor.root.setAttribute('aria-labelledby', 'news-editor-label');
+  document.querySelectorAll('.ql-toolbar button').forEach((control) => { const name = `${control.className.replace('ql-', '')}${control.value ? ` ${control.value}` : ''}`; control.setAttribute('aria-label', name); control.title = name; });
+  document.querySelectorAll('.ql-toolbar .ql-picker-label').forEach((control) => control.setAttribute('aria-label', 'Paragraph style'));
+  state.newsEditor.on('text-change', () => document.getElementById('news-form')?.dispatchEvent(new Event('input', { bubbles: true })));
+  if (!can('write')) document.querySelectorAll('#news-form input,#news-form textarea,#news-form select').forEach((control) => { control.disabled = true; });
+  refreshIcons();
+};
+const saveNews = async (publish = false) => {
+  if (saveNews.busy) return;
+  const form = document.getElementById('news-form');
+  if (!form.reportValidity()) return;
+  saveNews.busy = true;
+  try {
+    const data = new FormData(form); const values = Object.fromEntries(data); const sequence = state.editSequence;
+    const input = { ...state.newsArticle, ...values, id: state.newsArticle.id || `news-${values.slug}`, locale: state.newsArticle.locale || values.locale, kind: 'news', richContent: state.newsEditor.getSemanticHTML(), body: '', relatedProjects: data.getAll('relatedProjects'), relatedServices: data.getAll('relatedServices'), seo: { title: values['seo.title'], description: values['seo.description'], image: values['seo.image'], noindex: form.elements['seo.noindex'].checked }, publish };
+    const { saved } = await api('/news', 'POST', input);
+    state.newsArticle = saved; state.dirty = state.editSequence !== sequence;
+    if (!state.dirty) await showNewsEditor(saved);
+    document.getElementById('field-slug').readOnly = true;
+    document.getElementById('news-save-state').textContent = state.dirty ? 'Newer changes not saved' : publish ? `${saved.status === 'scheduled' ? 'Scheduled' : 'Published'} / Version ${saved.version}` : `Draft saved / Version ${saved.version}`;
+    notify(publish ? saved.status === 'scheduled' ? 'Article scheduled.' : 'Article published.' : 'Article draft saved.');
+  } finally { saveNews.busy = false; }
+};
 const inquiriesView = async () => {
   const data = await api('/inquiries'); state.inquiries = data.inquiries;
   return `${heading('Inquiries', '', `${data.retentionDays}-day retention`)}${data.inquiries.length ? `<div class="table-wrap"><table><thead><tr><th>From</th><th>Company</th><th>Status</th><th>Received</th><th></th></tr></thead><tbody>${data.inquiries.map((entry) => `<tr><td><button class="row-title" type="button" data-open-inquiry="${entry.id}">${escapeHtml(entry.name)}</button><div class="subtle">${escapeHtml(entry.email)}</div></td><td>${escapeHtml(entry.company)}</td><td>${badge(entry.status)}</td><td>${date(entry.created_at)}</td><td>${iconButton('Open inquiry', 'arrow-up-right', `data-open-inquiry="${entry.id}"`)}</td></tr>`).join('')}</tbody></table></div>` : empty('No inquiries yet.')}`;
@@ -287,7 +346,7 @@ const settingsView = async () => {
   <section id="panel-delivery" role="tabpanel" aria-labelledby="tab-delivery" hidden><div class="form-grid">${field('Desktop background film', 'videoSource', settings.videoSource, { asset: true })}${field('Mobile background film', 'mobileVideoSource', settings.mobileVideoSource, { asset: true })}${field('Showreel', 'showreelSource', settings.showreelSource, { asset: true })}</div></section><section id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden><h2>Two-factor authentication</h2><p class="subtle">${state.user.mfaEnabled ? 'Enabled' : 'Not enabled'}</p>${button(state.user.mfaEnabled ? 'Disable MFA' : 'Set up MFA', 'shield-check', state.user.mfaEnabled ? 'data-mfa-disable' : 'data-mfa-setup')}</section><footer class="form-footer" id="settings-actions">${settingsActions()}</footer></form>`;
 };
 
-const views = { dashboard, projects, media: mediaView, pages: pagesView, seo: seoView, articles: articlesView, clients: clientsView, inquiries: inquiriesView, users: usersView, settings: settingsView, activity: async () => `${heading('Activity log')}${activityTable((await api('/activity')).activity)}<div class="pagination">${button('Load more', 'chevron-down', 'data-more-activity')}</div>` };
+const views = { dashboard, projects, media: mediaView, pages: pagesView, news: newsView, seo: seoView, articles: articlesView, clients: clientsView, inquiries: inquiriesView, users: usersView, settings: settingsView, activity: async () => `${heading('Activity log')}${activityTable((await api('/activity')).activity)}<div class="pagination">${button('Load more', 'chevron-down', 'data-more-activity')}</div>` };
 const navigate = async (view, force = false) => {
   if (state.dirty && !force && !window.confirm('Discard unsaved changes?')) return;
   clearTimeout(state.saveTimer);
@@ -355,6 +414,12 @@ document.addEventListener('click', async (event) => {
     if (target.hasAttribute('data-pick-media')) await mediaPicker(target.dataset.pickMedia);
     if (target.hasAttribute('data-choose-media')) {
       const asset = state.pickerAssets.find((entry) => entry.id === target.dataset.chooseMedia);
+      if (state.picker === 'news-inline-image') {
+        if (!asset.mime.startsWith('image/')) throw new Error('Choose an image for the article.');
+        state.newsImageUrl = asset.url; state.picker = null;
+        showDialog('Image details', `<form id="news-image-form">${field('Image alt text', 'alt', asset.metadata.alt?.[state.newsArticle.locale || 'en'], { required: true })}${field('Caption (optional)', 'caption')}<footer class="form-footer"><button type="submit" class="button button--primary">Insert image</button></footer></form>`);
+        return;
+      }
       const input = document.getElementById(state.picker);
       const preferred = input.name.includes('preview') ? asset.derivatives.find((entry) => entry.kind === 'preview') : input.name.includes('video') || input.name === 'showreelSource' ? asset.derivatives.find((entry) => entry.kind === 'film-1080') || asset.derivatives.find((entry) => entry.kind === 'film-720') : asset.derivatives.filter((entry) => entry.mime === 'image/webp').sort((first, second) => second.width - first.width)[0];
       input.value = preferred?.url || asset.url; input.dispatchEvent(new Event('input', { bubbles: true })); dialog.close(); state.picker = null;
@@ -425,6 +490,35 @@ document.addEventListener('click', async (event) => {
       await api(`/pages/${state.page.locale}/${state.page.id}`, 'DELETE', { version: state.page.version }); state.dirty = false; await navigate('pages', true); notify('Page deleted.');
     }
     if (target.hasAttribute('data-delete-redirect') && confirm('Delete this redirect?')) { await api('/redirects', 'DELETE', { source: target.dataset.deleteRedirect }); await navigate('seo', true); }
+    if (target.hasAttribute('data-new-news')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; state.dirty = false; await showNewsEditor(); }
+    if (target.hasAttribute('data-edit-news')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; state.dirty = false; await showNewsEditor(state.news.find((article) => `${article.locale}:${article.id}` === target.dataset.editNews)); }
+    if (target.hasAttribute('data-publish-news')) await saveNews(true);
+    if (target.hasAttribute('data-preview-news')) {
+      if (state.dirty) throw new Error('Save the draft before previewing the latest changes.');
+      showDialog('Saved article preview', `<iframe class="preview-frame" title="Article draft preview" src="/api/admin/pages/${state.newsArticle.locale}/${state.newsArticle.id}/preview.html"></iframe>`);
+    }
+    if (target.hasAttribute('data-translate-news')) {
+      if (state.dirty && !confirm('Discard unsaved changes?')) return;
+      const current = state.newsArticle; const locale = current.locale === 'en' ? 'el' : 'en';
+      const other = (await api('/news')).news.find((article) => article.id === current.id && article.locale === locale);
+      state.dirty = false; await showNewsEditor(other || { id: current.id, locale, thumbnail: current.thumbnail, imageAlt: '', author: current.author });
+    }
+    if (target.hasAttribute('data-news-revisions')) {
+      const data = await api(`/pages/${state.newsArticle.locale}/${state.newsArticle.id}/revisions`);
+      showDialog('Article revisions', data.revisions.length ? data.revisions.map((revision) => `<p>#${revision.id} / ${date(revision.created_at)} ${can('write') ? button('Restore draft', 'rotate-ccw', `data-restore-news-revision="${revision.id}"`) : ''}</p>`).join('') : empty('No earlier revisions yet.'));
+    }
+    if (target.hasAttribute('data-restore-news-revision') && confirm('Restore this revision as a private draft? Unsaved changes will be discarded.')) {
+      const data = await api(`/pages/${state.newsArticle.locale}/${state.newsArticle.id}/revisions/${target.dataset.restoreNewsRevision}/restore`, 'POST', { version: state.newsArticle.version });
+      state.dirty = false; dialog.close(); await showNewsEditor(data.saved); notify('Article restored as a draft.');
+    }
+    if (target.hasAttribute('data-retire-news') && confirm('Remove this article from public access? Saved history and media will be retained. Unsaved changes will be discarded.')) {
+      const action = target.dataset.retireNews;
+      const route = `/pages/${state.newsArticle.locale}/${state.newsArticle.id}`;
+      const data = await api(`${route}${action === 'delete' ? '' : `/${action}`}`, action === 'delete' ? 'DELETE' : 'POST', { version: state.newsArticle.version });
+      state.dirty = false;
+      if (action === 'delete') await navigate('news', true); else await showNewsEditor(data.saved);
+      notify(action === 'delete' ? 'Article deleted.' : action === 'archive' ? 'Article archived.' : 'Article unpublished.');
+    }
     if (target.hasAttribute('data-new-article')) articleEditor();
     if (target.hasAttribute('data-edit-article')) articleEditor(state.articles.find((entry) => entry.id === target.dataset.editArticle));
     if (target.hasAttribute('data-delete-article') && confirm('Delete this article?')) { await api(`/articles/${state.article.id}`, 'DELETE'); dialog.close(); await navigate('articles', true); }
@@ -454,6 +548,15 @@ document.addEventListener('submit', async (event) => {
     if (formId === 'login-form') { await api('/session'); const data = await api('/login', 'POST', values); state.user = data.user; await navigate('dashboard', true); }
     if (formId === 'project-form') await saveProject();
     if (formId === 'page-form') await savePage();
+    if (formId === 'news-form') await saveNews();
+    if (formId === 'news-image-form') {
+      const index = state.newsSelection;
+      state.newsEditor.insertEmbed(index, 'image', state.newsImageUrl, 'user');
+      const image = [...state.newsEditor.root.querySelectorAll('img')].find((element) => element.getAttribute('src') === state.newsImageUrl && !element.alt);
+      if (image) state.newsEditor.formatText(index, 1, 'alt', values.alt, 'user');
+      if (values.caption) state.newsEditor.insertText(index + 1, `\n${values.caption}\n`, { italic: true }, 'user');
+      dialog.close(); state.newsEditor.focus();
+    }
     if (formId === 'media-metadata-form') { await api(`/media/${state.asset.id}`, 'PATCH', { title: values.title, collection: values.collection, alt: { en: values['alt.en'], el: values['alt.el'] }, tags: values.tags.split(',').map((entry) => entry.trim()).filter(Boolean), rights: values.rights, attribution: values.attribution }); dialog.close(); await navigate('media', true); notify('Media metadata saved.'); }
     if (formId === 'collection-form') { for (const id of state.selected) { const asset = state.media.find((entry) => entry.id === id); if (asset) await api(`/media/${id}`, 'PATCH', { ...asset.metadata, collection: values.collection }); } dialog.close(); state.selected.clear(); await navigate('media', true); notify('Collection updated.'); }
     if (formId === 'article-form') { await api('/articles', 'POST', values); dialog.close(); await navigate('articles', true); notify('Article saved.'); }
@@ -479,7 +582,7 @@ document.addEventListener('submit', async (event) => {
 
 document.addEventListener('input', (event) => {
   const target = event.target;
-  if (target.closest('#project-form,#page-form,#settings-form,#clients-form')) {
+  if (target.closest('#project-form,#page-form,#settings-form,#clients-form,#news-form')) {
     state.editSequence = (state.editSequence || 0) + 1;
     if (target.name !== 'autosave') state.dirty = true;
     if (target.closest('#project-form') && state.autosave && state.dirty) {
@@ -508,6 +611,10 @@ document.addEventListener('change', async (event) => {
     if (target.name === 'unused') { state.unused = target.checked; state.mediaPage = 1; await navigate('media', true); }
     if (target.id === 'media-upload') await uploadFiles(target.files);
     if (target.id === 'media-replace') await uploadFiles(target.files, state.asset.id);
+    if (target.id === 'news-upload' && target.files[0]) {
+      const result = await uploadFile(target.files[0]);
+      const input = document.getElementById('field-thumbnail'); input.value = result.url; input.dispatchEvent(new Event('input', { bubbles: true })); notify('Featured image uploaded.');
+    }
   } catch (error) { notify(error.message, true); }
 });
 document.addEventListener('dragover', (event) => { const zone = event.target.closest('#media-dropzone'); if (zone) { event.preventDefault(); zone.classList.add('is-dragging'); } });

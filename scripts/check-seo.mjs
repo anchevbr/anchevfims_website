@@ -4,18 +4,22 @@ import { load } from 'cheerio';
 import { servicePages, getServicePath } from '../public/scripts/modules/service-pages.js';
 
 const base = process.env.CHECK_URL || 'http://localhost:3011';
-const paths = ['/', '/el/', '/studio', '/el/studio', ...servicePages.flatMap((page) => ['en', 'el'].map((language) => getServicePath(page, language)))];
+const destinations = ['work', 'services', 'about', 'contact', 'press', 'podcast', 'news'];
+const paths = ['/', '/el/', '/studio', '/el/studio', ...destinations.flatMap((key) => [`/${key}`, `/el/${key}`]), ...servicePages.flatMap((page) => ['en', 'el'].map((language) => getServicePath(page, language)))];
 const sitemapResponse = await fetch(`${base}/sitemap.xml`);
 assert.equal(sitemapResponse.status, 200);
 const sitemap = new XMLParser().parse(await sitemapResponse.text());
 const entries = Array.isArray(sitemap.urlset.url) ? sitemap.urlset.url : [sitemap.urlset.url];
 const locations = entries.map((entry) => entry.loc);
+assert.equal(new Set(locations.map((location) => new URL(location).href)).size, locations.length, 'sitemap has no duplicate canonical URLs');
 const canonicalOrigin = new URL(locations[0]).origin;
-const projectPaths = locations.map((location) => new URL(location).pathname).filter((pathname) => pathname.startsWith('/work/'));
+const projectPaths = locations.map((location) => new URL(location).pathname).filter((pathname) => /^\/(?:el\/)?work\/[^/]+$/.test(pathname));
 const episodePaths = locations.map((location) => new URL(location).pathname).filter((pathname) => pathname.startsWith('/podcast/'));
+const newsPaths = locations.map((location) => new URL(location).pathname).filter((pathname) => /^\/(?:el\/)?news\/[^/]+$/.test(pathname));
+const targetPaths = [...new Set([...paths, ...projectPaths, ...episodePaths, ...newsPaths])];
 const titles = new Set();
 
-for (const pathname of [...paths, ...projectPaths, ...episodePaths]) {
+for (const pathname of targetPaths) {
   const response = await fetch(`${base}${pathname}`);
   assert.equal(response.status, 200, pathname);
   const html = await response.text();
@@ -35,12 +39,13 @@ for (const pathname of [...paths, ...projectPaths, ...episodePaths]) {
   assert.ok(schema?.['@graph']?.length, `${pathname}: schema`);
   const greek = pathname.startsWith('/el/') || pathname.startsWith('/podcast/');
   assert.ok(html.includes(`<html lang="${greek ? 'el' : 'en'}">`), `${pathname}: language`);
-  if (pathname.includes('/services/') || pathname.endsWith('/studio')) {
+  const destination = pathname.replace(/^\/el\//, '/').slice(1);
+  if (pathname.includes('/services/') || pathname.endsWith('/studio') || destinations.includes(destination)) {
     const englishPath = greek ? pathname.slice(3) : pathname;
     for (const [language, alternatePath] of [['en', englishPath], ['el', `/el${englishPath}`]]) {
       assert.ok(html.includes(`hreflang="${language}" href="${canonicalOrigin}${alternatePath}"`), `${pathname}: reciprocal ${language}`);
     }
-    assert.ok(html.includes('href="/services/') || html.includes('href="/el/services/'), `${pathname}: internal service links`);
+    assert.ok(html.includes('href="/services') || html.includes('href="/el/services'), `${pathname}: internal service links`);
   }
   if (pathname.includes('/services/')) {
     assert.ok(html.includes('mailto:'), `${pathname}: direct contact`);
@@ -61,18 +66,27 @@ for (const pathname of [...paths, ...projectPaths, ...episodePaths]) {
     assert.ok(schema['@graph'].some((node) => node['@type'] === 'PodcastEpisode' && node.url === `${canonicalOrigin}${pathname}`));
     assert.ok(html.includes('preload="none"'), `${pathname}: audio does not preload`);
   }
+  if (newsPaths.includes(pathname)) {
+    const article = schema['@graph'].find((node) => node['@type'] === 'BlogPosting');
+    assert.equal(article?.url, `${canonicalOrigin}${pathname}`, `${pathname}: article schema`);
+    assert.ok(Date.parse(article.datePublished) <= Date.now(), `${pathname}: publication is due`);
+    assert.equal(document('meta[property="article:published_time"]').attr('content'), article.datePublished);
+    assert.ok(article.dateModified && article.headline && article.publisher);
+  }
   console.log(`PASS ${pathname}`);
 }
 
-for (const pathname of ['/studio', '/el/studio', ...paths.filter((entry) => entry.includes('/services/')), ...projectPaths, ...episodePaths]) {
+for (const pathname of targetPaths.filter((entry) => entry !== '/' && entry !== '/el/')) {
   const response = await fetch(`${base}${pathname}/?source=seo-check`, { redirect: 'manual' });
   assert.equal(response.status, 301, `${pathname}: slash redirect`);
   assert.equal(response.headers.get('location'), `${pathname}?source=seo-check`);
 }
-const missing = await fetch(`${base}/services/does-not-exist`);
-assert.equal(missing.status, 404);
-assert.match(await missing.text(), /noindex,nofollow/);
+for (const pathname of ['/services/does-not-exist', '/work/does-not-exist', '/news/does-not-exist', '/el/news/does-not-exist']) {
+  const missing = await fetch(`${base}${pathname}`);
+  assert.equal(missing.status, 404, pathname);
+  assert.match(await missing.text(), /noindex,nofollow/);
+}
 const robots = await (await fetch(`${base}/robots.txt`)).text();
 assert.ok(robots.includes('Disallow: /studio/'));
 assert.ok(robots.includes('Disallow: /api/'));
-console.log('PASS slash redirects, genuine 404 and private-route robots rules');
+console.log(`PASS ${targetPaths.length} canonical pages, slash redirects, genuine 404 and private-route robots rules`);

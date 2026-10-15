@@ -64,7 +64,7 @@ export const renderProjectCardMarkup = (project, index) => {
       : '<span class="film-card__placeholder" aria-hidden="true"></span>');
 
   return `
-    <article class="film-card${typeClass}"${fallback}>
+    <article class="film-card${typeClass}" data-category="${escapeHtml(project.category)}"${fallback}>
       <a class="film-card__trigger" href="/work/${encodeURIComponent(project.id)}" data-project-id="${escapeHtml(project.id)}" data-film-cursor data-cursor-label="View Film">
         <span class="film-card__media">
           ${cardMedia}
@@ -434,6 +434,31 @@ const renderSocialLinks = (social) => (Array.isArray(social) ? social : [])
   })
   .join('');
 
+export const renderInquiryForm = (language = 'en', { studio = false } = {}) => {
+  const words = copy(language);
+  const greek = language === 'el';
+  const options = [['commercial-production', 'Commercial production', 'Διαφημιστικό'], ['branded-content', 'Branded content', 'Περιεχόμενο για brands'], ['corporate-video-production', 'Corporate film', 'Εταιρική ταινία'], ['film-documentary-production', 'Film / documentary', 'Ταινία / ντοκιμαντέρ'], ['event-video-production', 'Event / live production', 'Εκδήλωση / ζωντανή παραγωγή'], ['production-services-greece', 'Production services in Greece', 'Υπηρεσίες παραγωγής στην Ελλάδα'], ['post-production', 'Post-production', 'Post-production'], ['photography', 'Photography', 'Φωτογραφία'], ['studio', 'Studio production', 'Παραγωγή στο στούντιο']];
+  return `<form class="inquiry-form" id="inquiry-form" action="/api/contact" method="post">
+    <h3>${studio ? greek ? 'Συζητήστε το γύρισμά σας.' : 'Discuss your studio shoot.' : words.inquiryTitle}</h3>
+    <input type="hidden" name="locale" value="${language}" /><input type="hidden" name="submissionId" value="" />
+    <div class="inquiry-form__grid">
+      <label for="inquiry-name">${words.name}<input id="inquiry-name" name="name" autocomplete="name" minlength="2" maxlength="120" required /></label>
+      <label for="inquiry-email">${words.email}<input id="inquiry-email" name="email" type="email" autocomplete="email" maxlength="254" required /></label>
+      <label for="inquiry-company">${words.company}<input id="inquiry-company" name="company" autocomplete="organization" maxlength="200" /></label>
+      ${studio ? '<input type="hidden" name="productionType" value="studio" />' : `<label for="inquiry-type">${greek ? 'Είδος παραγωγής (προαιρετικό)' : 'Production type (optional)'}<select id="inquiry-type" name="productionType"><option value="">${greek ? 'Επιλογή' : 'Select'}</option>${options.map(([value, en, el]) => `<option value="${value}">${greek ? el : en}</option>`).join('')}</select></label>`}
+      <label for="inquiry-timeline">${greek ? 'Ημερομηνίες / χρονοδιάγραμμα (προαιρετικό)' : 'Dates / timeline (optional)'}<input id="inquiry-timeline" name="timeline" maxlength="120" /></label>
+      ${studio ? `<label for="inquiry-crew">${greek ? 'Μέγεθος συνεργείου (προαιρετικό)' : 'Crew size (optional)'}<input id="inquiry-crew" name="crewSize" type="number" min="1" max="9999" inputmode="numeric" /></label>` : `<label for="inquiry-location">${greek ? 'Τοποθεσία (προαιρετικό)' : 'Location (optional)'}<input id="inquiry-location" name="location" maxlength="200" /></label>`}
+      <label for="inquiry-budget">${greek ? 'Ενδεικτικός προϋπολογισμός (προαιρετικό)' : 'Budget range (optional)'}<input id="inquiry-budget" name="budget" maxlength="100" /></label>
+      <label class="inquiry-form__wide" for="inquiry-message">${words.message}<textarea id="inquiry-message" name="message" rows="4" minlength="20" maxlength="5000" required></textarea></label>
+      ${studio ? `<label class="inquiry-form__wide" for="inquiry-requirements">${greek ? 'Εξοπλισμός / τεχνικές ανάγκες (προαιρετικό)' : 'Equipment / technical requirements (optional)'}<textarea id="inquiry-requirements" name="requirements" rows="3" maxlength="2000"></textarea></label>` : ''}
+    </div>
+    <div class="inquiry-form__trap" aria-hidden="true"><label for="inquiry-website">Website<input id="inquiry-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
+    <label class="inquiry-form__consent" for="inquiry-privacy"><input id="inquiry-privacy" name="privacy" type="checkbox" required /><span>${words.privacy} <a href="${greek ? '/el/privacy' : '/privacy'}">${words.privacyLink}</a></span></label>
+    <button class="inquiry-form__submit" type="submit">${words.send}</button>
+    <p class="inquiry-form__status" id="inquiry-status" role="status" aria-live="polite"></p>
+  </form>`;
+};
+
 export const renderContactPageMarkup = (contact, language = 'en', editorial = null) => {
   const words = copy(language);
   const email = String(contact?.email || '').trim();
@@ -464,19 +489,7 @@ export const renderContactPageMarkup = (contact, language = 'en', editorial = nu
         <div class="contact-final__socials">${socialLinks}</div>
       </div>
     </div>
-    <form class="inquiry-form" id="inquiry-form" action="/api/contact" method="post">
-      <h3>${words.inquiryTitle}</h3>
-      <div class="inquiry-form__grid">
-        <label for="inquiry-name">${words.name}<input id="inquiry-name" name="name" autocomplete="name" minlength="2" maxlength="120" required /></label>
-        <label for="inquiry-email">${words.email}<input id="inquiry-email" name="email" type="email" autocomplete="email" maxlength="254" required /></label>
-        <label for="inquiry-company">${words.company}<input id="inquiry-company" name="company" autocomplete="organization" maxlength="200" /></label>
-        <label class="inquiry-form__wide" for="inquiry-message">${words.message}<textarea id="inquiry-message" name="message" rows="4" minlength="20" maxlength="5000" required></textarea></label>
-      </div>
-      <div class="inquiry-form__trap" aria-hidden="true"><label for="inquiry-website">Website<input id="inquiry-website" name="website" tabindex="-1" autocomplete="off" /></label></div>
-      <label class="inquiry-form__consent" for="inquiry-privacy"><input id="inquiry-privacy" name="privacy" type="checkbox" required /><span>${words.privacy} <a href="${language === 'el' ? '/el/privacy' : '/privacy'}">${words.privacyLink}</a></span></label>
-      <button class="inquiry-form__submit" type="submit">${words.send}</button>
-      <p class="inquiry-form__status" id="inquiry-status" role="status" aria-live="polite"></p>
-    </form>`;
+    ${renderInquiryForm(language)}`;
 };
 
 export const renderAboutPageMarkup = () => `

@@ -185,9 +185,9 @@ export const setVideoSource = () => {
 };
 
 export const closeOverlay = () => {
-  menuOverlay.classList.remove('is-open');
-  menuOverlay.setAttribute('aria-hidden', 'true');
-  menuToggle.setAttribute('aria-expanded', 'false');
+  menuOverlay?.classList.remove('is-open');
+  menuOverlay?.setAttribute('aria-hidden', 'true');
+  menuToggle?.setAttribute('aria-expanded', 'false');
 };
 
 export const closePanels = () => {
@@ -295,7 +295,7 @@ export const setupOptionalAudio = () => {
 };
 
 export const bindEvents = () => {
-  menuToggle.addEventListener('click', () => {
+  menuToggle?.addEventListener('click', () => {
     const nextState = !menuOverlay.classList.contains('is-open');
     menuOverlay.classList.toggle('is-open', nextState);
     menuOverlay.setAttribute('aria-hidden', String(!nextState));

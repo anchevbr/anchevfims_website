@@ -1,5 +1,6 @@
 import { fileTypeFromFile } from 'file-type';
 import { z } from 'zod';
+import sanitizeHtml from 'sanitize-html';
 
 const mediaTypes = new Set([
   'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
@@ -38,6 +39,18 @@ export const text = z.string().trim().max(20000);
 export const assetUrl = z.string().max(2048).refine((value) => !value || Boolean(safeUrl(value)), 'Invalid media URL');
 export const externalUrl = z.string().max(2048).refine((value) => !value || Boolean(safeUrl(value, false)), 'Use an HTTP or HTTPS URL');
 export const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/);
+
+export const sanitizeNewsContent = (html) => sanitizeHtml(html, {
+  allowedTags: ['p', 'h2', 'h3', 'strong', 'em', 'u', 's', 'blockquote', 'ol', 'ul', 'li', 'a', 'figure', 'figcaption', 'img', 'br'],
+  allowedAttributes: { a: ['href', 'title', 'rel'], img: ['src', 'alt', 'width', 'height', 'loading', 'decoding'] },
+  allowedSchemes: ['https', 'http'],
+  allowProtocolRelative: false,
+  transformTags: {
+    a: (_tag, attributes) => ({ tagName: 'a', attribs: { href: safeUrl(attributes.href), rel: 'noopener noreferrer' } }),
+    img: (_tag, attributes) => ({ tagName: 'img', attribs: { src: safeUrl(attributes.src), alt: String(attributes.alt || '').slice(0, 250), loading: 'lazy', decoding: 'async' } })
+  },
+  exclusiveFilter: (frame) => frame.tag === 'img' && !frame.attribs.src
+});
 
 export const permissions = {
   owner: new Set(['read', 'write', 'publish', 'media', 'inquiries', 'settings', 'users']),

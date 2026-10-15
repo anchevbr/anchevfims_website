@@ -215,6 +215,8 @@ const setupReelPlayer = () => {
   const video = document.getElementById('reel-player-video');
   if (!player || !video) return () => {};
 
+  let previousFocus = null;
+  const lockedElements = [];
   const durationLabels = [...document.querySelectorAll('[data-showreel-duration]')];
   const updateDuration = () => {
     const duration = formatDuration(video.duration);
@@ -234,20 +236,28 @@ const setupReelPlayer = () => {
     return true;
   };
 
-  const open = () => {
-    if (!loadSource()) return;
+  const open = (event) => {
+    if (player.classList.contains('is-open') || !loadSource()) return;
+    previousFocus = event?.currentTarget || document.activeElement;
+    for (const element of document.body.children) {
+      if (element !== player && !element.contains(player) && !element.inert) { element.inert = true; lockedElements.push(element); }
+    }
     player.classList.add('is-open');
     player.setAttribute('aria-hidden', 'false');
     document.body.classList.add('reel-player-open');
+    player.querySelector('button[data-close-reel]')?.focus();
     video.play().catch(() => undefined);
   };
 
   const close = () => {
+    const wasOpen = player.classList.contains('is-open');
     player.classList.remove('is-open');
     player.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('reel-player-open');
     video.pause();
     video.currentTime = 0;
+    lockedElements.splice(0).forEach((element) => { element.inert = false; });
+    if (wasOpen && previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
   };
 
   const openButtons = [...document.querySelectorAll('[data-open-reel]')];
@@ -256,10 +266,16 @@ const setupReelPlayer = () => {
   closeButtons.forEach((button) => button.addEventListener('click', close));
   video.addEventListener('loadedmetadata', updateDuration);
   video.addEventListener('durationchange', updateDuration);
-  loadSource();
 
   const onKeydown = (event) => {
-    if (event.key === 'Escape' && player.classList.contains('is-open')) close();
+    if (!player.classList.contains('is-open')) return;
+    if (event.key === 'Escape') close();
+    if (event.key === 'Tab') {
+      const controls = [...player.querySelectorAll('button:not([disabled]),video[controls],a[href],[tabindex="0"]')];
+      const first = controls[0]; const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
   };
   document.addEventListener('keydown', onKeydown);
 
@@ -470,18 +486,16 @@ export const setupFilmExperience = () => {
     }
   }, { rootMargin: '600px' });
   if (contact) contactObserver.observe(contact);
+  const cinema = document.body.classList.contains('cinema-site');
   const cleanups = [
     () => nearImages.disconnect(),
     () => contactObserver.disconnect(),
-    setupOpeningSequence(),
-    setupStoryProgression(),
-    setupIndexedScrollChapters(),
+    ...(cinema ? [] : [setupOpeningSequence(), setupStoryProgression(), setupIndexedScrollChapters()]),
     setupReelPlayer(),
     setupStudioVideo(),
     setupRevealObserver(),
     setupAthensTime(),
-    setupMagneticElements(),
-    setupFilmCursor()
+    ...(cinema ? [] : [setupMagneticElements(), setupFilmCursor()])
   ];
   window.__anchevFilmExperienceCleanup = () => cleanups.forEach((cleanup) => cleanup?.());
 };

@@ -10,6 +10,7 @@ import { openProjectFromLocation, renderProjectBrowser } from '/scripts/modules/
 import { setVideoSource, bindEvents, openPanel, setupMotionPreferences, setupOptionalAudio, animateIn } from '/scripts/modules/ui.js?v=20261010-navigation-motion';
 import { siteContent } from '/scripts/content.js';
 import { setupLanguagePreference } from '/scripts/modules/language.js';
+import { setupCinema } from '/scripts/modules/cinema.js';
 
 setupAnalytics();
 setupLanguagePreference();
@@ -47,8 +48,10 @@ const init = async () => {
   renderLegalPanel('privacy');
   renderLegalPanel('cookies');
   renderLegalPanel('terms');
-  if (window.location.hash === '#panel-cookies') openPanel('cookies');
+  const legalPanel = window.location.hash.match(/^#panel-(cookies|terms)$/)?.[1];
+  if (legalPanel) openPanel(legalPanel);
   await openProjectFromLocation();
+  setupCinema();
 
   document.getElementById('footer-admin-btn')?.addEventListener('click', () => { window.location.assign('/admin'); });
 };

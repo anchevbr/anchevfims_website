@@ -53,10 +53,16 @@
       import { setupProjectFilmPlayers } from '/scripts/modules/content-markup.js?v=20261010-project';
       import { setupStudioVideo } from '/scripts/modules/experience.js?v=20261010-studio-page';
       import { setupLanguagePreference } from '/scripts/modules/language.js';
+      import { setupCinema } from '/scripts/modules/cinema.js';
+      import { renderContact } from '/scripts/modules/contact.js';
+      import { renderPodcast } from '/scripts/modules/podcast.js';
       setupAnalytics();
       setupLanguagePreference();
       setupProjectFilmPlayers(document.getElementById('project-page-root'));
       setupStudioVideo();
+      renderContact();
+      if (document.getElementById('podcast-episodes-list')) renderPodcast();
+      setupCinema();
     </script>
   </body>
 </html>

@@ -2,9 +2,11 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { asyncRoute, createUser, hashPassword, publicUser, requirePermission, userSchema } from './auth.js';
-import { assetUrl, externalUrl, text, slug, can, safeUrl } from './security.js';
+import { assetUrl, externalUrl, text, slug, can, safeUrl, sanitizeNewsContent } from './security.js';
 import { homepageFields } from '../public/scripts/modules/localization.js';
 import { sitePageTemplates } from './public-pages.js';
+import { newsCategories, newsTimeZone, publicationInstant } from './news.js';
+import { servicePages } from '../public/scripts/modules/service-pages.js';
 
 const shortText = z.string().trim().max(250);
 export const seoSchema = z.object({
@@ -33,8 +35,14 @@ const pageSchema = z.object({
   id: slug, locale: z.enum(['en', 'el']), version: z.number().int().positive().optional(),
   heading: shortText.min(1), intro: text.default(''), body: text.default(''),
   blocks: z.array(z.object({ type: z.enum(['text', 'image', 'video', 'link', 'fact']), title: shortText.default(''), text: text.default(''), url: assetUrl.default(''), alt: shortText.default('') })).max(50).default([]),
-  seo: seoSchema
-});
+  seo: seoSchema, kind: z.enum(['page', 'news']).default('page'),
+  publicationDate: z.union([z.literal(''), z.iso.datetime({ offset: true })]).default(''),
+  status: z.enum(['draft', 'scheduled', 'published', 'archived']).default('draft'),
+  category: z.enum(['company', 'collaborations', 'productions', 'behind-the-scenes', 'studio', 'press']).default('company'),
+  author: shortText.default('Anchev Films'), thumbnail: assetUrl.default(''), imageAlt: shortText.default(''),
+  richContent: z.string().max(120000).transform(sanitizeNewsContent).default(''),
+  video: assetUrl.default(''), relatedProjects: z.array(slug).max(20).default([]), relatedServices: z.array(slug).max(12).default([])
+}).refine((page) => page.kind === 'news' ? /^news-[a-z0-9][a-z0-9-]*$/.test(page.id) : !page.id.startsWith('news-'), 'News identifiers must start with news- followed by a slug; that prefix is reserved for news.');
 const homepageCopySchema = z.object(Object.fromEntries(homepageFields.map((field) => [field.key, z.string().trim().max(field.area ? 2000 : 250).optional()])));
 export const settingsSchema = z.object({
   videoSource: assetUrl, mobileVideoSource: assetUrl, showreelSource: assetUrl,
@@ -156,10 +164,14 @@ export const installAdminApi = (app, store) => {
     } catch (error) { next(error); }
   });
   router.get('/pages', (_req, res) => res.json({ pages: store.db.prepare('SELECT id,locale,version,updated_at,published IS NOT NULL AS isPublished FROM pages ORDER BY id,locale').all().map((row) => ({ ...store.page(row.id, row.locale), isPublished: Boolean(row.isPublished) })) }));
-  router.post('/pages', write, (req, res, next) => {
+  router.get('/news', (_req, res) => res.json({ news: ['en', 'el'].flatMap((locale) => store.news({ locale, publicOnly: false })), timeZone: newsTimeZone, categories: newsCategories, services: servicePages.map((service) => ({ slug: service.slug, title: service.en.title })) }));
+  router.post(['/pages', '/news'], write, (req, res, next) => {
     try {
-      const page = pageSchema.parse(req.body);
+      const input = req.body.publicationLocal !== undefined ? { ...req.body, publicationDate: publicationInstant(z.string().max(30).parse(req.body.publicationLocal)) } : req.body;
+      const page = pageSchema.parse(input);
+      if (req.path === '/news' && page.kind !== 'news') return res.status(400).json({ error: 'Use a news document.' });
       if (req.body.publish && !can(req.user.role, 'publish')) return res.status(403).json({ error: 'Publishing requires an administrator.' });
+      if (page.kind === 'news' && req.body.publish && (!page.publicationDate || !page.thumbnail || !page.imageAlt || !(page.richContent || page.body))) return res.status(400).json({ error: 'Publication needs a date with timezone, a featured image with alt text, and article content.' });
       res.json({ saved: store.savePage(page, req.user.id, Boolean(req.body.publish)) });
     } catch (error) { next(error); }
   });
@@ -178,6 +190,10 @@ export const installAdminApi = (app, store) => {
   });
   router.post('/pages/:locale/:id/unpublish', publish, (req, res, next) => {
     try { res.json({ saved: store.retirePage(req.params.id, req.params.locale, req.body.version, req.user.id) }); }
+    catch (error) { next(error); }
+  });
+  router.post('/pages/:locale/:id/archive', publish, (req, res, next) => {
+    try { res.json({ saved: store.retirePage(req.params.id, req.params.locale, req.body.version, req.user.id, false, true) }); }
     catch (error) { next(error); }
   });
   router.delete('/pages/:locale/:id', publish, (req, res, next) => {
