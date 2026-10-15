@@ -86,6 +86,14 @@ const projects = async () => {
   state.projects = (await api('/projects')).projects;
   return `${heading('Projects', can('write') ? button('New project', 'plus', 'data-new-project', true) : '')}<div class="toolbar"><input type="search" id="project-search" aria-label="Search projects" placeholder="Search projects" /><select id="project-status" aria-label="Publication status"><option value="">All statuses</option><option>published</option><option>draft</option><option>archived</option></select><span class="subtle">${state.projects.length} projects</span></div>${state.projects.length ? `<div class="table-wrap"><table><thead><tr><th>Production</th><th>Status</th><th>Category</th><th>Languages</th><th>Updated</th><th>Actions</th></tr></thead><tbody>${state.projects.map((project) => `<tr data-project-row data-search="${escapeHtml(`${project.name} ${project.client} ${project.category}`.toLowerCase())}" data-status="${project.status}"><td><div class="table-title">${project.thumbnail ? `<img src="${escapeHtml(project.thumbnail)}" alt="" loading="lazy" />` : ''}<div><button class="row-title" type="button" data-edit-project="${escapeHtml(project.id)}">${escapeHtml(project.name)}</button><div class="subtle">${escapeHtml(project.client || project.id)}</div></div></div></td><td>${badge(project.status)}${project.hasUnpublishedChanges && project.status === 'published' ? '<div class="subtle">Unpublished changes</div>' : ''}</td><td>${escapeHtml(project.category)}</td><td>EN${project.hasGreek ? ' / EL' : ''}</td><td>${date(project.updatedAt)}</td><td><div class="actions">${iconButton('Edit project', 'pencil', `data-edit-project="${escapeHtml(project.id)}"`)}${can('write') ? iconButton('Duplicate project', 'copy', `data-duplicate-project="${escapeHtml(project.id)}"`) : ''}</div></td></tr>`).join('')}</tbody></table></div>` : empty('No projects yet.')}`;
 };
+const orderedRow = (kind, value = kind === 'gallery' ? '' : {}) => {
+  const id = `ordered-${crypto.randomUUID()}`;
+  const content = kind === 'gallery'
+    ? `<img src="${escapeHtml(value)}" alt="" width="80" height="52" ${value ? '' : 'hidden'} /><div class="asset-input"><input id="${id}-url" name="gallery-url" aria-label="Image URL" value="${escapeHtml(value)}" />${can('write') ? iconButton('Choose media', 'images', `data-pick-media="${id}-url"`) : ''}</div>`
+    : `<input name="credit-role" aria-label="Credit role" value="${escapeHtml(value.role)}" placeholder="Role" /><input name="credit-name" aria-label="Credit name" value="${escapeHtml(value.name)}" placeholder="Name" />`;
+  return `<div class="ordered-row ordered-row--${kind}" id="${id}" data-ordered-row>${can('write') ? iconButton('Drag to reorder', 'grip-vertical', 'draggable="true" data-drag-row') : ''}${content}${can('write') ? `<div class="actions">${iconButton('Move up', 'arrow-up', 'data-row-up')}${iconButton('Move down', 'arrow-down', 'data-row-down')}${iconButton('Remove', 'trash-2', 'data-row-remove')}</div>` : ''}</div>`;
+};
+const orderedEditor = (kind, entries = []) => `<section class="form-section"><div class="ordered-heading"><h2>${kind === 'gallery' ? 'Gallery' : 'Additional credits'}</h2>${can('write') ? button(kind === 'gallery' ? 'Add image' : 'Add credit', 'plus', `data-add-row="${kind}"`) : ''}</div><div id="project-${kind}" class="ordered-list">${entries.map((entry) => orderedRow(kind, entry)).join('')}</div><p class="subtle" id="${kind}-order-status" role="status" aria-live="polite"></p></section>`;
 const projectEditor = (project = {}) => {
   state.project = project;
   const greek = project.translations?.el || {};
@@ -93,7 +101,7 @@ const projectEditor = (project = {}) => {
   <form id="project-form"><div class="editor-tabs" role="tablist" aria-label="Project content">${[['en', 'English'], ['el', 'Greek'], ['production', 'Production'], ['seo', 'SEO'], ['revisions', 'Revisions']].map(([key, label], index) => `<button class="editor-tab" type="button" role="tab" id="tab-${key}" aria-controls="panel-${key}" aria-selected="${index === 0}" data-editor-tab="${key}">${label}</button>`).join('')}</div>
   <section id="panel-en" role="tabpanel" aria-labelledby="tab-en"><div class="form-grid">${field('Project title', 'name', project.name, { required: true })}${field('URL identifier', 'id', project.id, { required: true })}${field('Client', 'client', project.client)}${field('Category', 'category', project.category)}${field('Year', 'year', project.year)}${field('Tags', 'tags', (project.tags || []).join(', '))}${field('Short description', 'note', project.note, { area: true, wide: true })}${field('The brief', 'brief', project.brief, { area: true, wide: true })}${field('Our approach', 'approach', project.approach, { area: true, wide: true })}${field('The production', 'production', project.production, { area: true, wide: true })}</div></section>
   <section id="panel-el" role="tabpanel" aria-labelledby="tab-el" hidden><div class="form-grid">${field('Greek title', 'el.name', greek.name)}${field('Greek category', 'el.category', greek.category)}${field('Greek short description', 'el.note', greek.note, { area: true, wide: true })}${field('Greek brief', 'el.brief', greek.brief, { area: true, wide: true })}${field('Greek approach', 'el.approach', greek.approach, { area: true, wide: true })}${field('Greek production', 'el.production', greek.production, { area: true, wide: true })}${field('Greek services', 'el.services', lines(greek.services), { area: true })}${field('Greek deliverables', 'el.deliverables', lines(greek.deliverables), { area: true })}${field('Greek SEO title', 'el.seo.title', greek.seo?.title)}${field('Greek SEO description', 'el.seo.description', greek.seo?.description, { area: true })}${checkbox('Translation reviewed and ready to publish', 'el.ready', greek.ready)}</div></section>
-  <section id="panel-production" role="tabpanel" aria-labelledby="tab-production" hidden><div class="form-grid">${['thumbnail', 'video', 'preview', 'behindFrame', 'behindVideo'].map((name) => field({ thumbnail: 'Cover image', video: 'Film', preview: 'Preview loop', behindFrame: 'Behind-the-scenes cover', behindVideo: 'Behind-the-scenes film' }[name], name, project[name], { asset: true })).join('')}${field('Project website', 'link', project.link)}${field('Press URL', 'pressLink', project.pressLink)}${field('Press title', 'pressTitle', project.pressTitle)}${field('Location', 'location', project.location)}${field('Runtime', 'duration', project.duration)}${field('Director', 'director', project.director)}${field('Producer', 'producer', project.producer)}${field('Director of photography', 'dop', project.dop)}${field('Services', 'services', lines(project.services), { area: true })}${field('Deliverables', 'deliverables', lines(project.deliverables), { area: true })}${field('Gallery URLs', 'frames', lines(project.frames), { area: true, wide: true })}${field('Additional credits', 'credits', (project.credits || []).map((credit) => `${credit.role} | ${credit.name}`).join('\n'), { area: true, wide: true })}${field('Publication date', 'publishedAt', project.publishedAt?.slice(0, 10), { type: 'date' })}${checkbox('Featured project', 'featured', project.featured)}</div></section>
+  <section id="panel-production" role="tabpanel" aria-labelledby="tab-production" hidden><div class="form-grid">${['thumbnail', 'video', 'preview', 'behindFrame', 'behindVideo'].map((name) => field({ thumbnail: 'Cover image', video: 'Film', preview: 'Preview loop', behindFrame: 'Behind-the-scenes cover', behindVideo: 'Behind-the-scenes film' }[name], name, project[name], { asset: true })).join('')}${field('Project website', 'link', project.link)}${field('Press URL', 'pressLink', project.pressLink)}${field('Press title', 'pressTitle', project.pressTitle)}${field('Location', 'location', project.location)}${field('Runtime', 'duration', project.duration)}${field('Director', 'director', project.director)}${field('Producer', 'producer', project.producer)}${field('Director of photography', 'dop', project.dop)}${field('Services', 'services', lines(project.services), { area: true })}${field('Deliverables', 'deliverables', lines(project.deliverables), { area: true })}${field('Publication date', 'publishedAt', project.publishedAt?.slice(0, 10), { type: 'date' })}${checkbox('Featured project', 'featured', project.featured)}</div>${orderedEditor('gallery', project.frames)}${orderedEditor('credits', project.credits)}</section>
   <section id="panel-seo" role="tabpanel" aria-labelledby="tab-seo" hidden><div class="form-grid">${field('SEO title', 'seo.title', project.seo?.title)}${field('SEO description', 'seo.description', project.seo?.description, { area: true })}${field('Social image', 'seo.image', project.seo?.image, { asset: true })}${checkbox('Exclude from search indexing', 'seo.noindex', project.seo?.noindex)}</div></section>
   <section id="panel-revisions" role="tabpanel" aria-labelledby="tab-revisions" hidden><div id="revision-list">${empty('Save the project to start its revision history.')}</div></section>
   <footer class="form-footer"><span class="save-state" id="save-state">${project.version ? `Version ${project.version}` : 'Not saved'}</span>${can('write') ? `${checkbox('Autosave draft', 'autosave', state.autosave)}<button class="button" type="submit">${icon('save')}Save draft</button>` : ''}${can('publish') ? button('Publish', 'send', 'data-publish-project', true) : ''}${can('publish') && project.status === 'published' ? button('Unpublish', 'archive', 'data-unpublish-project') : ''}</footer></form>
@@ -105,9 +113,10 @@ const readProject = () => {
   const id = values.id || values.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const result = { ...state.project, id, version: state.project.version, status: state.project.status || 'draft', featured: form.elements.featured.checked, seo: { title: values['seo.title'], description: values['seo.description'], image: values['seo.image'], noindex: form.elements['seo.noindex'].checked } };
   for (const key of ['name', 'client', 'category', 'year', 'note', 'brief', 'approach', 'production', 'thumbnail', 'video', 'preview', 'behindFrame', 'behindVideo', 'link', 'pressLink', 'pressTitle', 'location', 'duration', 'director', 'producer', 'dop']) result[key] = values[key] || '';
-  for (const key of ['services', 'deliverables', 'frames']) result[key] = toLines(values[key]);
+  for (const key of ['services', 'deliverables']) result[key] = toLines(values[key]);
+  result.frames = [...form.querySelectorAll('#project-gallery [name="gallery-url"]')].map((input) => input.value.trim()).filter(Boolean);
   result.tags = (values.tags || '').split(',').map((entry) => entry.trim()).filter(Boolean);
-  result.credits = toLines(values.credits).map((entry) => { const [role, ...name] = entry.split('|'); return { role: role.trim(), name: name.join('|').trim() }; }).filter((entry) => entry.role && entry.name);
+  result.credits = [...form.querySelectorAll('#project-credits [data-ordered-row]')].map((row) => ({ role: row.querySelector('[name="credit-role"]').value.trim(), name: row.querySelector('[name="credit-name"]').value.trim() })).filter((entry) => entry.role && entry.name);
   result.publishedAt = values.publishedAt || null;
   result.translations = {};
   if (values['el.name'] || values['el.note'] || values['el.brief']) {
@@ -121,19 +130,28 @@ const readProject = () => {
 const saveProject = async (publish = false, silent = false, status) => {
   if (saveProject.busy) return;
   saveProject.busy = true;
+  let saved = false;
   try {
     const project = readProject();
+    const editSequence = state.editSequence;
     if (status) project.status = status;
     const data = await api('/projects', 'POST', { ...project, publish });
     state.project = data.saved;
     state.projects = data.projects;
-    state.dirty = false;
+    state.dirty = state.editSequence !== editSequence;
+    saved = true;
     document.getElementById('field-id').value = data.saved.id;
     document.getElementById('field-id').readOnly = true;
-    document.getElementById('save-state').textContent = `${publish ? 'Published' : 'Draft saved'} / ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+    document.getElementById('save-state').textContent = state.dirty ? 'Newer changes not saved' : `${publish ? 'Published' : 'Draft saved'} / ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
     if (!silent) notify(publish ? 'Project published.' : 'Draft saved.');
-    if (publish || status) await navigate('projects', true);
-  } finally { saveProject.busy = false; }
+    if ((publish || status) && !state.dirty) await navigate('projects', true);
+  } finally {
+    saveProject.busy = false;
+    if (saved && state.dirty && state.autosave && document.getElementById('project-form')) {
+      clearTimeout(state.saveTimer);
+      state.saveTimer = setTimeout(() => saveProject(false, true).catch((error) => notify(error.message, true)), 1800);
+    }
+  }
 };
 
 const mediaCard = (asset, picker = false) => {
@@ -201,15 +219,34 @@ const pagesView = async () => {
 };
 const pageEditor = (page = {}) => {
   state.page = page;
-  return `${heading(page.heading || 'New page', button('Back', 'arrow-left', 'data-view="pages"'), 'Pages')}<form id="page-form"><div class="form-grid">${field('Page title', 'heading', page.heading, { required: true })}${field('URL identifier', 'id', page.id, { required: true })}<div class="field"><label for="page-locale">Language</label><select name="locale" id="page-locale"><option value="en">English</option><option value="el" ${page.locale === 'el' ? 'selected' : ''}>Greek</option></select></div>${field('Introduction', 'intro', page.intro, { area: true, wide: true })}${field('Body', 'body', page.body, { area: true, wide: true })}${field('SEO title', 'seo.title', page.seo?.title)}${field('SEO description', 'seo.description', page.seo?.description, { area: true })}</div><section class="form-section"><h2>Content blocks</h2><div id="page-blocks">${(page.blocks || []).map(blockRow).join('')}</div>${button('Add block', 'plus', 'data-add-block')}</section><footer class="form-footer">${can('write') ? '<button class="button" type="submit">Save draft</button>' : ''}${can('publish') ? button('Publish', 'send', 'data-publish-page', true) : ''}</footer></form>`;
+  const actions = `${button('Back', 'arrow-left', 'data-view="pages"')}${page.id ? button('Preview', 'eye', 'data-preview-page') + button('Revisions', 'history', 'data-page-revisions') : ''}`;
+  return `${heading(page.heading || 'New page', actions, `Pages / ${page.isPublished ? 'published' : 'draft'}`)}
+  <form id="page-form"><div class="form-grid">
+    ${field('Page title', 'heading', page.heading, { required: true })}${field('URL identifier', 'id', page.id, { required: true })}
+    <div class="field"><label for="page-locale">Language</label><select name="locale" id="page-locale"><option value="en">English</option><option value="el" ${page.locale === 'el' ? 'selected' : ''}>Greek</option></select></div>
+    ${field('Introduction', 'intro', page.intro, { area: true, wide: true })}${field('Body', 'body', page.body, { area: true, wide: true })}
+    ${field('SEO title', 'seo.title', page.seo?.title)}${field('SEO description', 'seo.description', page.seo?.description, { area: true })}
+    ${field('Social image', 'seo.image', page.seo?.image, { asset: true })}${checkbox('Exclude from search indexing', 'seo.noindex', page.seo?.noindex)}
+  </div><section class="form-section"><h2>Content blocks</h2><div id="page-blocks">${(page.blocks || []).map(blockRow).join('')}</div>${can('write') ? button('Add block', 'plus', 'data-add-block') : ''}</section>
+  <footer class="form-footer"><span id="page-save-state" class="save-state">${page.version ? `Version ${page.version}` : 'Not saved'}</span>${can('write') ? `<button class="button" type="submit">${icon('save')}Save draft</button>` : ''}${can('publish') ? button('Publish', 'send', 'data-publish-page', true) : ''}${can('publish') && page.isPublished ? button('Unpublish', 'archive', 'data-unpublish-page') : ''}</footer></form>
+  ${can('publish') && page.id ? `<section class="form-section">${button('Delete page', 'trash-2', 'data-delete-page')}</section>` : ''}`;
+};
+const showPageEditor = (page = {}) => {
+  document.getElementById('console-main').innerHTML = pageEditor(page);
+  if (page.id) { document.getElementById('field-id').readOnly = true; document.getElementById('page-locale').disabled = true; }
+  if (!can('write')) document.querySelectorAll('#page-form input,#page-form textarea,#page-form select').forEach((input) => { input.disabled = true; });
+  refreshIcons();
 };
 const blockRow = (block = {}) => `<div class="block-row" data-block><select aria-label="Block type" name="block-type"><option value="text">Text</option>${['image', 'video', 'link'].map((type) => `<option value="${type}" ${block.type === type ? 'selected' : ''}>${type[0].toUpperCase() + type.slice(1)}</option>`).join('')}</select><div class="block-content"><input name="block-title" aria-label="Block title" value="${escapeHtml(block.title)}" placeholder="Title" /><textarea name="block-text" aria-label="Block text" placeholder="Text">${escapeHtml(block.text)}</textarea><input name="block-url" aria-label="Block URL" value="${escapeHtml(block.url)}" placeholder="Media or link URL" /><input name="block-alt" aria-label="Image alt text" value="${escapeHtml(block.alt)}" placeholder="Alt text" /></div><div class="actions">${iconButton('Move block up', 'arrow-up', 'data-block-up')}${iconButton('Move block down', 'arrow-down', 'data-block-down')}${iconButton('Remove block', 'trash-2', 'data-remove-block')}</div></div>`;
 const savePage = async (publish = false) => {
   const form = document.getElementById('page-form');
   const values = Object.fromEntries(new FormData(form));
   const blocks = [...form.querySelectorAll('[data-block]')].map((row) => Object.fromEntries(['type', 'title', 'text', 'url', 'alt'].map((key) => [key, row.querySelector(`[name="block-${key}"]`).value])));
-  const data = await api('/pages', 'POST', { ...state.page, ...values, blocks, seo: { title: values['seo.title'], description: values['seo.description'], image: '', noindex: false }, publish });
-  state.page = data.saved; state.dirty = false; notify(publish ? 'Page published.' : 'Page draft saved.');
+  const editSequence = state.editSequence;
+  const data = await api('/pages', 'POST', { ...state.page, ...values, blocks, seo: { title: values['seo.title'], description: values['seo.description'], image: values['seo.image'], noindex: form.elements['seo.noindex'].checked }, publish });
+  state.page = data.saved; state.dirty = state.editSequence !== editSequence;
+  if (!state.dirty) showPageEditor(data.saved);
+  notify(publish ? 'Page published.' : 'Page draft saved.');
   if (publish) await navigate('pages', true);
 };
 
@@ -285,6 +322,22 @@ document.addEventListener('click', async (event) => {
     if (target.hasAttribute('data-new-project')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; state.view = 'projects'; state.dirty = false; shell(); document.getElementById('console-main').innerHTML = projectEditor(); refreshIcons(); }
     if (target.hasAttribute('data-edit-project')) await editProject(target.dataset.editProject, target.hasAttribute('data-open-seo'));
     if (target.hasAttribute('data-editor-tab')) await activateTab(target.dataset.editorTab);
+    if (target.hasAttribute('data-add-row')) {
+      const list = document.getElementById(`project-${target.dataset.addRow}`);
+      list.insertAdjacentHTML('beforeend', orderedRow(target.dataset.addRow));
+      list.dispatchEvent(new Event('input', { bubbles: true })); refreshIcons(); list.lastElementChild.querySelector('input').focus();
+    }
+    if (target.matches('[data-row-up],[data-row-down],[data-row-remove]')) {
+      const row = target.closest('[data-ordered-row]'); const list = row.parentElement;
+      if (target.hasAttribute('data-row-remove')) row.remove();
+      else {
+        if (target.hasAttribute('data-row-up') && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+        if (target.hasAttribute('data-row-down') && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+        row.querySelector(target.hasAttribute('data-row-up') ? '[data-row-up]' : '[data-row-down]').focus();
+      }
+      list.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById(`${list.id === 'project-gallery' ? 'gallery' : 'credits'}-order-status`).textContent = 'Order updated. Save the draft to keep these changes.';
+    }
     if (target.hasAttribute('data-publish-project')) await saveProject(true);
     if (target.hasAttribute('data-archive-project') && confirm('Archive this project? It will leave the public website.')) await saveProject(false, false, 'archived');
     if (target.hasAttribute('data-unpublish-project') && confirm('Remove this project from the public website?')) { await api(`/projects/${state.project.id}/unpublish`, 'POST'); await navigate('projects', true); notify('Project unpublished.'); }
@@ -304,13 +357,32 @@ document.addEventListener('click', async (event) => {
     if (target.hasAttribute('data-retry-media')) { await api(`/media/${target.dataset.retryMedia}/retry`, 'POST'); dialog.close(); await navigate('media', true); notify('Processing queued.'); }
     if (target.hasAttribute('data-bulk-delete') && state.selected.size && confirm(`Delete ${state.selected.size} selected assets? Referenced media will be preserved.`)) { for (const id of state.selected) { try { await api(`/media/${id}`, 'DELETE'); } catch (error) { notify(error.message, true); } } state.selected.clear(); await navigate('media', true); }
     if (target.hasAttribute('data-bulk-collection') && state.selected.size) showDialog('Collection', `<form id="collection-form">${field('Collection name', 'collection', '', { required: true })}<footer class="form-footer"><button class="button button--primary" type="submit">Apply to selection</button></footer></form>`);
-    if (target.hasAttribute('data-new-page')) { state.view = 'pages'; shell(); document.getElementById('console-main').innerHTML = pageEditor(); refreshIcons(); }
-    if (target.hasAttribute('data-edit-page')) { const page = state.pages.find((entry) => `${entry.locale}:${entry.id}` === target.dataset.editPage); document.getElementById('console-main').innerHTML = pageEditor(page); if (page.id) { document.getElementById('field-id').readOnly = true; document.getElementById('page-locale').disabled = true; } refreshIcons(); }
-    if (target.hasAttribute('data-add-block')) { document.getElementById('page-blocks').insertAdjacentHTML('beforeend', blockRow()); state.dirty = true; refreshIcons(); }
-    if (target.hasAttribute('data-remove-block')) { target.closest('[data-block]').remove(); state.dirty = true; }
-    if (target.hasAttribute('data-block-up')) { const row = target.closest('[data-block]'); if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); state.dirty = true; }
-    if (target.hasAttribute('data-block-down')) { const row = target.closest('[data-block]'); if (row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row); state.dirty = true; }
+    if (target.hasAttribute('data-new-page')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; state.dirty = false; state.view = 'pages'; shell(); showPageEditor(); }
+    if (target.hasAttribute('data-edit-page')) { if (state.dirty && !confirm('Discard unsaved changes?')) return; const page = state.pages.find((entry) => `${entry.locale}:${entry.id}` === target.dataset.editPage); state.dirty = false; showPageEditor(page); }
+    if (target.hasAttribute('data-add-block')) { document.getElementById('page-blocks').insertAdjacentHTML('beforeend', blockRow()); document.getElementById('page-blocks').dispatchEvent(new Event('input', { bubbles: true })); refreshIcons(); }
+    if (target.hasAttribute('data-remove-block')) { target.closest('[data-block]').remove(); document.getElementById('page-blocks').dispatchEvent(new Event('input', { bubbles: true })); }
+    if (target.hasAttribute('data-block-up')) { const row = target.closest('[data-block]'); if (row.previousElementSibling) row.parentNode.insertBefore(row, row.previousElementSibling); row.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (target.hasAttribute('data-block-down')) { const row = target.closest('[data-block]'); if (row.nextElementSibling) row.parentNode.insertBefore(row.nextElementSibling, row); row.dispatchEvent(new Event('input', { bubbles: true })); }
     if (target.hasAttribute('data-publish-page')) await savePage(true);
+    if (target.hasAttribute('data-preview-page')) {
+      if (state.dirty) { notify('Save the draft before previewing your latest changes.', true); return; }
+      showDialog('Saved page draft preview', `<iframe class="preview-frame" title="Page draft preview" src="/api/admin/pages/${state.page.locale}/${encodeURIComponent(state.page.id)}/preview.html"></iframe>`);
+    }
+    if (target.hasAttribute('data-page-revisions')) {
+      const data = await api(`/pages/${state.page.locale}/${state.page.id}/revisions`);
+      showDialog('Page revisions', data.revisions.length ? `<div class="table-wrap"><table><thead><tr><th>Revision</th><th>Saved</th><th>Action</th></tr></thead><tbody>${data.revisions.map((revision) => `<tr><td>#${revision.id}</td><td>${date(revision.created_at)}</td><td>${can('write') ? button('Restore draft', 'rotate-ccw', `data-restore-page-revision="${revision.id}"`) : ''}</td></tr>`).join('')}</tbody></table></div>` : empty('No earlier revisions yet.'));
+    }
+    if (target.hasAttribute('data-restore-page-revision') && confirm('Restore this revision as a draft? Unsaved changes will be discarded.')) {
+      const data = await api(`/pages/${state.page.locale}/${state.page.id}/revisions/${target.dataset.restorePageRevision}/restore`, 'POST', { version: state.page.version });
+      state.dirty = false; dialog.close(); showPageEditor(data.saved); notify('Page revision restored as a draft.');
+    }
+    if (target.hasAttribute('data-unpublish-page') && confirm('Remove this page from the public website?')) {
+      const data = await api(`/pages/${state.page.locale}/${state.page.id}/unpublish`, 'POST', { version: state.page.version });
+      state.dirty = false; showPageEditor(data.saved); notify('Page unpublished.');
+    }
+    if (target.hasAttribute('data-delete-page') && confirm('Delete this page? Revision history and media will be retained.')) {
+      await api(`/pages/${state.page.locale}/${state.page.id}`, 'DELETE', { version: state.page.version }); state.dirty = false; await navigate('pages', true); notify('Page deleted.');
+    }
     if (target.hasAttribute('data-delete-redirect') && confirm('Delete this redirect?')) { await api('/redirects', 'DELETE', { source: target.dataset.deleteRedirect }); await navigate('seo', true); }
     if (target.hasAttribute('data-new-article')) articleEditor();
     if (target.hasAttribute('data-edit-article')) articleEditor(state.articles.find((entry) => entry.id === target.dataset.editArticle));
@@ -366,6 +438,7 @@ document.addEventListener('submit', async (event) => {
 document.addEventListener('input', (event) => {
   const target = event.target;
   if (target.closest('#project-form,#page-form,#settings-form,#clients-form')) {
+    state.editSequence = (state.editSequence || 0) + 1;
     if (target.name !== 'autosave') state.dirty = true;
     if (target.closest('#project-form') && state.autosave && state.dirty) {
       clearTimeout(state.saveTimer);
@@ -396,6 +469,17 @@ document.addEventListener('change', async (event) => {
   } catch (error) { notify(error.message, true); }
 });
 document.addEventListener('dragover', (event) => { const zone = event.target.closest('#media-dropzone'); if (zone) { event.preventDefault(); zone.classList.add('is-dragging'); } });
+document.addEventListener('dragstart', (event) => {
+  const handle = event.target.closest('[data-drag-row]');
+  if (handle) { event.dataTransfer.setData('text/x-anchev-row', handle.closest('[data-ordered-row]').id); event.dataTransfer.effectAllowed = 'move'; }
+});
+document.addEventListener('dragover', (event) => { if (event.target.closest('[data-ordered-row]')) event.preventDefault(); });
+document.addEventListener('drop', (event) => {
+  const row = event.target.closest('[data-ordered-row]');
+  const moved = document.getElementById(event.dataTransfer.getData('text/x-anchev-row'));
+  if (!row || !moved || moved === row || moved.parentElement !== row.parentElement) return;
+  event.preventDefault(); row.parentElement.insertBefore(moved, row); moved.dispatchEvent(new Event('input', { bubbles: true }));
+});
 document.addEventListener('dragleave', (event) => event.target.closest('#media-dropzone')?.classList.remove('is-dragging'));
 document.addEventListener('drop', async (event) => { if (!event.target.closest('#media-dropzone')) return; event.preventDefault(); try { await uploadFiles(event.dataTransfer.files); } catch (error) { notify(error.message, true); } });
 document.addEventListener('keydown', (event) => {

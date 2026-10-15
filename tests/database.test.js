@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { ContentStore } from '../src/database.js';
+import { ContentStore, parseInquiryRetentionDays } from '../src/database.js';
 
 const fixture = async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'anchev-content-'));
@@ -52,4 +52,27 @@ test('unfinished Greek translations are not public and deletion retains revision
     assert.equal(store.projects().length, 0);
     assert.ok(store.db.prepare('SELECT count(*) AS total FROM revisions').get().total > 0);
   } finally { await cleanup(); }
+});
+
+test('inquiry retention runs at startup and hourly without inbox access', async (context) => {
+  const { store, cleanup } = await fixture();
+  const timestamp = Date.parse('2026-10-15T12:00:00Z');
+  context.mock.timers.enable({ apis: ['Date', 'setInterval'], now: timestamp });
+  try {
+    const insert = store.db.prepare('INSERT INTO inquiries(id,name,email,message,locale,created_at) VALUES (?,?,?,?,?,?)');
+    const cutoff = timestamp - store.inquiryRetentionDays * 86400000;
+    insert.run('expired', 'Private name', 'person@example.invalid', 'Private message', 'en', new Date(cutoff - 1).toISOString());
+    insert.run('boundary', 'Private name', 'person@example.invalid', 'Private message', 'en', new Date(cutoff).toISOString());
+    insert.run('recent', 'Private name', 'person@example.invalid', 'Private message', 'en', new Date(timestamp).toISOString());
+    store.startInquiryRetention();
+    assert.deepEqual(store.db.prepare('SELECT id FROM inquiries ORDER BY id').all().map((entry) => entry.id), ['boundary', 'recent']);
+    context.mock.timers.tick(3600000);
+    assert.deepEqual(store.db.prepare('SELECT id FROM inquiries').all().map((entry) => entry.id), ['recent']);
+  } finally { await cleanup(); }
+});
+
+test('inquiry retention configuration rejects invalid or unbounded durations', () => {
+  assert.equal(parseInquiryRetentionDays(''), 90);
+  assert.equal(parseInquiryRetentionDays('30'), 30);
+  for (const value of ['NaN', '0', '-1', '1.5', '3651', 'Infinity']) assert.throws(() => parseInquiryRetentionDays(value), /INQUIRY_RETENTION_DAYS/);
 });

@@ -94,7 +94,16 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
   $('head').append('<link rel="stylesheet" href="/styles/refinements.css?v=20261015-platform" />');
   $('body').prepend(`<a class="public-skip-link" href="${home ? '#work-page' : '#project-page-root'}">${language === 'el' ? 'Μετάβαση στο περιεχόμενο' : 'Skip to content'}</a>`);
   if (home) {
-    const settings = JSON.stringify(store.settings()).replace(/</g, '\\u003c');
+    const contentSettings = store.settings();
+    const source = contentSettings.videoSource || '/media/hero-video.mp4';
+    const original = store.db.prepare('SELECT id FROM media WHERE url=?').get(source);
+    const generatedPoster = original ? store.db.prepare("SELECT url FROM media_derivatives WHERE media_id=? AND kind='poster'").get(original.id)?.url : null;
+    const poster = generatedPoster || (['/media/hero-video.mp4', '/media/hero-video-web.mp4'].includes(source) ? '/media/hero-poster.webp' : null);
+    if (poster) {
+      $('head').append(`<link rel="preload" as="image" href="${escapeHtml(poster)}" fetchpriority="high" />`);
+      $('#hero-media').attr('data-poster', poster).before(`<img class="hero-poster" src="${escapeHtml(poster)}" alt="" width="1280" height="536" fetchpriority="high" decoding="async" />`);
+    }
+    const settings = JSON.stringify(contentSettings).replace(/</g, '\\u003c');
     $('head').append(`<script id="public-settings" type="application/json">${settings}</script>`);
     $('.hero h1').html('<span>Anchev</span><span class="hero-title-accent">Films.</span>');
     $('.hero h1').after('<p class="hero-positioning">Ideas, planned and brought to life.<br>Film production in Athens. Built for everywhere.</p>');

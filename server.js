@@ -35,6 +35,7 @@ const uploadsDir = path.resolve(process.env.UPLOADS_DIR || path.join(publicDir, 
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const store = new ContentStore(dataDir);
 store.importJson();
+store.startInquiryRetention();
 const media = new MediaService(store, uploadsDir);
 if (process.env.NODE_ENV === 'production' && !/^https:\/\//.test(process.env.SITE_URL || '')) throw new Error('Production requires an HTTPS SITE_URL.');
 const indexFile = path.join(publicDir, 'index.html');
@@ -583,8 +584,8 @@ const getSeoPage = async (req) => {
     heading: language === 'el' ? 'Πολιτική απορρήτου' : 'Privacy notice',
     intro: language === 'el' ? 'Πληροφορίες για τα στοιχεία επικοινωνίας και τις επιλογές απορρήτου στην Anchev Films.' : 'How Anchev Films handles inquiries and privacy choices on this website.',
     body: language === 'el'
-      ? `Χρησιμοποιούμε το όνομα, το email, την εταιρεία και το μήνυμα που υποβάλλετε για να απαντήσουμε στο αίτημά σας και να συζητήσουμε πιθανή συνεργασία. Τα μηνύματα αποθηκεύονται στο προστατευμένο σύστημα διαχείρισης και διατηρούνται έως ${Number(process.env.INQUIRY_RETENTION_DAYS || 90)} ημέρες, εκτός αν απαιτείται νόμιμη περαιτέρω διατήρηση. Μπορείτε να ζητήσετε πρόσβαση, διόρθωση ή διαγραφή επικοινωνώντας στο ${settings.contact.email}.\n\nΤα cookies διαχείρισης είναι απαραίτητα μόνο για τη σύνδεση εξουσιοδοτημένων χρηστών. Τα εργαλεία Google Analytics και μέτρησης διαφήμισης ενεργοποιούνται σύμφωνα με τις επιλογές σας, οι οποίες αλλάζουν στις ρυθμίσεις cookies. Τα βίντεο YouTube φορτώνονται μετά από δική σας ενέργεια. Οι υπηρεσίες τρίτων εφαρμόζουν τις δικές τους πολιτικές απορρήτου.\n\nΓια ζητήματα προστασίας δεδομένων μπορείτε να απευθυνθείτε στην Ελληνική Αρχή Προστασίας Δεδομένων Προσωπικού Χαρακτήρα.`
-      : `We use the name, email address, company and message you submit to respond to your inquiry and discuss a possible production. Messages are stored in the protected administration system and retained for up to ${Number(process.env.INQUIRY_RETENTION_DAYS || 90)} days, unless a legal obligation requires further retention. Request access, correction or deletion by contacting ${settings.contact.email}.\n\nAdmin session cookies are necessary only for authorized sign-in. Google Analytics and advertising measurement follow your optional consent choices, which can be changed through cookie settings. YouTube films load after your click. Third-party services apply their own privacy policies.\n\nYou may raise data-protection concerns with the Hellenic Data Protection Authority.`,
+      ? `Χρησιμοποιούμε το όνομα, το email, την εταιρεία και το μήνυμα που υποβάλλετε για να απαντήσουμε στο αίτημά σας και να συζητήσουμε πιθανή συνεργασία. Τα μηνύματα αποθηκεύονται στο προστατευμένο σύστημα διαχείρισης και διατηρούνται για ${store.inquiryRetentionDays} ημέρες και διαγράφονται στον επόμενο ωριαίο έλεγχο. Μπορείτε να ζητήσετε πρόσβαση, διόρθωση ή διαγραφή επικοινωνώντας στο ${settings.contact.email}.\n\nΤα cookies διαχείρισης είναι απαραίτητα μόνο για τη σύνδεση εξουσιοδοτημένων χρηστών. Τα εργαλεία Google Analytics και μέτρησης διαφήμισης ενεργοποιούνται σύμφωνα με τις επιλογές σας, οι οποίες αλλάζουν στις ρυθμίσεις cookies. Τα βίντεο YouTube φορτώνονται μετά από δική σας ενέργεια. Οι υπηρεσίες τρίτων εφαρμόζουν τις δικές τους πολιτικές απορρήτου.\n\nΓια ζητήματα προστασίας δεδομένων μπορείτε να απευθυνθείτε στην Ελληνική Αρχή Προστασίας Δεδομένων Προσωπικού Χαρακτήρα.`
+      : `We use the name, email address, company and message you submit to respond to your inquiry and discuss a possible production. Messages are stored in the protected administration system for ${store.inquiryRetentionDays} days and deleted at the next hourly cleanup. Request access, correction or deletion by contacting ${settings.contact.email}.\n\nAdmin session cookies are necessary only for authorized sign-in. Google Analytics and advertising measurement follow your optional consent choices, which can be changed through cookie settings. YouTube films load after your click. Third-party services apply their own privacy policies.\n\nYou may raise data-protection concerns with the Hellenic Data Protection Authority.`,
     blocks: [], seo: { noindex: false }
   } : null;
   if (customPage?.heading) {
@@ -980,6 +981,19 @@ app.get('/api/admin/projects/:id/preview.html', async (req, res, next) => {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
     res.type('html').send(markup.replace(SEO_BLOCK, '<meta name="robots" content="noindex,nofollow,noarchive" />').replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
+  } catch (error) { next(error); }
+});
+app.get('/api/admin/pages/:locale/:id/preview.html', async (req, res, next) => {
+  try {
+    const page = store.page(req.params.id, req.params.locale);
+    if (!page || !['en', 'el'].includes(req.params.locale)) return res.status(404).json({ error: 'Page not found.' });
+    const template = await fs.readFile(projectTemplateFile, 'utf8');
+    const markup = injectRootMarkup(template, 'project-page-root', renderPageBody(page, page.locale));
+    const document = renderPublicDocument(markup.replace(SEO_BLOCK, '<meta name="robots" content="noindex,nofollow,noarchive" />'), { language: page.locale, route: `${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, store });
+    res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+    res.type('html').send(document.replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (error) { next(error); }
 });
 const servePublicFiles = express.static(publicDir, {

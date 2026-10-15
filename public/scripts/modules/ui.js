@@ -58,12 +58,16 @@ const createNativeHeroVideo = (source) => {
   const video = document.createElement('video');
   video.id = 'hero-video';
   video.className = 'hero-video';
-  video.autoplay = true;
+  video.autoplay = !window.matchMedia('(prefers-reduced-motion: reduce)').matches && !navigator.connection?.saveData;
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
-  video.preload = 'metadata';
-  video.src = source;
+  video.preload = 'none';
+  video.dataset.src = source;
+  if (heroMedia.dataset.poster) video.poster = heroMedia.dataset.poster;
+  if (video.autoplay) video.src = source;
+  video.addEventListener('playing', () => heroMedia.parentElement.classList.add('is-playing'));
+  video.addEventListener('error', () => heroMedia.parentElement.classList.remove('is-playing'));
   return video;
 };
 
@@ -150,9 +154,10 @@ const updateHeroPlayback = () => {
   }
 
   if (heroVideo instanceof HTMLVideoElement) {
-    if (body.classList.contains('reduced-motion')) {
+    if (body.classList.contains('reduced-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData) {
       heroVideo.pause();
     } else {
+      if (!heroVideo.getAttribute('src') && heroVideo.dataset.src) heroVideo.src = heroVideo.dataset.src;
       heroVideo.play().catch(() => undefined);
     }
     return;

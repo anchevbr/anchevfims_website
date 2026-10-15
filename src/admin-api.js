@@ -138,18 +138,29 @@ export const installAdminApi = (app, store) => {
     try {
       const page = pageSchema.parse(req.body);
       if (req.body.publish && !can(req.user.role, 'publish')) return res.status(403).json({ error: 'Publishing requires an administrator.' });
-      store.db.transaction(() => {
-        const current = store.db.prepare('SELECT * FROM pages WHERE id=? AND locale=?').get(page.id, page.locale);
-        if (current && current.version !== page.version) throw Object.assign(new Error('This page changed. Reload before saving.'), { status: 409 });
-        if (current) store.db.prepare('INSERT INTO revisions(entity_type,entity_id,document,actor_id,created_at) VALUES (?,?,?,?,?)').run('page', `${page.locale}:${page.id}`, current.draft, req.user.id, new Date().toISOString());
-        const document = JSON.stringify(page);
-        store.db.prepare('INSERT INTO pages(id,locale,draft,published,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(id,locale) DO UPDATE SET draft=excluded.draft,published=excluded.published,version=pages.version+1,updated_at=excluded.updated_at')
-          .run(page.id, page.locale, document, req.body.publish ? document : current?.published || null, new Date().toISOString());
-        store.syncUsage('page', `${page.locale}:${page.id}`, page, current?.published ? JSON.parse(current.published) : null);
-        store.audit(req.user.id, req.body.publish ? 'page.publish' : 'page.save', 'page', `${page.locale}:${page.id}`);
-      })();
-      res.json({ saved: store.page(page.id, page.locale) });
+      res.json({ saved: store.savePage(page, req.user.id, Boolean(req.body.publish)) });
     } catch (error) { next(error); }
+  });
+  router.get('/pages/:locale/:id/revisions', (req, res) => {
+    res.json({ revisions: store.db.prepare('SELECT id,created_at FROM revisions WHERE entity_type=? AND entity_id=? ORDER BY id DESC LIMIT 100').all('page', `${req.params.locale}:${req.params.id}`) });
+  });
+  router.post('/pages/:locale/:id/revisions/:revision/restore', write, (req, res, next) => {
+    try {
+      const current = store.page(req.params.id, req.params.locale);
+      const revision = store.db.prepare('SELECT document FROM revisions WHERE id=? AND entity_type=? AND entity_id=?').get(req.params.revision, 'page', `${req.params.locale}:${req.params.id}`);
+      if (!current || !revision) return res.status(404).json({ error: 'Page or revision not found.' });
+      if (req.body.version !== current.version) return res.status(409).json({ error: 'This page changed. Reload before restoring.' });
+      const document = pageSchema.parse({ ...JSON.parse(revision.document), id: current.id, locale: current.locale, version: current.version });
+      res.json({ saved: store.savePage(document, req.user.id) });
+    } catch (error) { next(error); }
+  });
+  router.post('/pages/:locale/:id/unpublish', publish, (req, res, next) => {
+    try { res.json({ saved: store.retirePage(req.params.id, req.params.locale, req.body.version, req.user.id) }); }
+    catch (error) { next(error); }
+  });
+  router.delete('/pages/:locale/:id', publish, (req, res, next) => {
+    try { store.retirePage(req.params.id, req.params.locale, req.body.version, req.user.id, true); res.json({ ok: true }); }
+    catch (error) { next(error); }
   });
   router.get('/seo', (_req, res) => res.json({
     projects: store.projects().map((project) => ({ id: project.id, name: project.name, status: project.status, seo: project.seo || {}, hasGreek: project.hasGreek })),
@@ -173,9 +184,8 @@ export const installAdminApi = (app, store) => {
     res.json({ ok: true });
   });
   router.get('/inquiries', requirePermission('inquiries'), (req, res) => {
-    const retention = Math.max(1, Number(process.env.INQUIRY_RETENTION_DAYS || 90));
-    store.db.prepare('DELETE FROM inquiries WHERE created_at<?').run(new Date(Date.now() - retention * 86400000).toISOString());
-    res.json({ inquiries: store.db.prepare('SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 500').all(), retentionDays: retention });
+    store.pruneInquiries();
+    res.json({ inquiries: store.db.prepare('SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 500').all(), retentionDays: store.inquiryRetentionDays });
   });
   router.patch('/inquiries/:id', requirePermission('inquiries'), (req, res, next) => {
     try {

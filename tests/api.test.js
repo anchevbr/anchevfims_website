@@ -30,6 +30,7 @@ const client = () => {
     async login(email) { await this.request('/session'); return this.request('/login', 'POST', { email, password }); }
   };
 };
+const ownerClient = client();
 
 before(async () => {
   process.env.MFA_ENCRYPTION_KEY = 'test-only-mfa-encryption-key-long-enough';
@@ -47,6 +48,7 @@ before(async () => {
   server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
+  await ownerClient.login('owner@example.com');
 });
 after(async () => {
   await new Promise((resolve) => server.close(resolve)); store.close(); await rm(directory, { recursive: true, force: true });
@@ -87,8 +89,7 @@ test('editors can save drafts but cannot publish, delete or change settings', as
 });
 
 test('publishing, draft revisions, duplicate and unpublish form a complete workflow', async () => {
-  const browser = client();
-  await browser.login('owner@example.com');
+  const browser = ownerClient;
   let result = await browser.request('/projects', 'POST', { id: 'published-film', name: 'Public title', publish: true });
   assert.equal(result.response.status, 200);
   assert.equal(store.project('published-film', { publicOnly: true }).name, 'Public title');
@@ -113,8 +114,7 @@ test('viewers cannot write and logout revokes access', async () => {
 });
 
 test('redirects refuse external destinations, privileged routes, chains and loops', async () => {
-  const browser = client();
-  await browser.login('owner@example.com');
+  const browser = ownerClient;
   assert.equal((await browser.request('/redirects', 'POST', { source: '/old-film', target: 'https://evil.test' })).response.status, 400);
   assert.equal((await browser.request('/redirects', 'POST', { source: '/admin', target: '/' })).response.status, 400);
   assert.equal((await browser.request('/redirects', 'POST', { source: '/old-film', target: '/work/film' })).response.status, 200);
@@ -148,12 +148,32 @@ test('MFA encrypts seeds, rejects replay and consumes recovery codes only once',
 });
 
 test('activity records are readable and pagination advances safely', async () => {
-  const browser = client();
-  await browser.login('owner@example.com');
+  const browser = ownerClient;
   const first = await browser.request('/activity');
   assert.equal(first.response.status, 200);
   assert.ok(first.data.activity.length);
   const next = await browser.request('/activity?offset=1');
   assert.equal(next.response.status, 200);
   assert.notEqual(next.data.activity[0].id, first.data.activity[0].id);
+});
+
+test('page lifecycle preserves public snapshots, checks versions and restores revisions only as drafts', async () => {
+  const browser = ownerClient;
+  let result = await browser.request('/pages', 'POST', { id: 'page-workflow', locale: 'en', heading: 'Published heading', body: 'Public page content.', publish: true });
+  assert.equal(result.response.status, 200);
+  const original = result.data.saved;
+  result = await browser.request('/pages', 'POST', { ...original, heading: 'Private draft heading' });
+  assert.equal(result.response.status, 200);
+  assert.equal(store.page('page-workflow', 'en', true).heading, 'Published heading');
+  const revisions = (await browser.request('/pages/en/page-workflow/revisions')).data.revisions;
+  const route = `/pages/en/page-workflow/revisions/${revisions[0].id}/restore`;
+  assert.equal((await browser.request(route, 'POST', { version: original.version })).response.status, 409);
+  result = await browser.request(route, 'POST', { version: result.data.saved.version });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.saved.heading, 'Published heading');
+  assert.equal((await browser.request('/pages/en/page-workflow/unpublish', 'POST', { version: result.data.saved.version })).response.status, 200);
+  assert.equal(store.page('page-workflow', 'en', true), null);
+  assert.equal((await browser.request('/pages/en/page-workflow', 'DELETE', { version: store.page('page-workflow').version })).response.status, 200);
+  assert.equal(store.page('page-workflow'), null);
+  assert.ok(store.db.prepare("SELECT count(*) AS total FROM revisions WHERE entity_type='page' AND entity_id='en:page-workflow'").get().total >= 3);
 });

@@ -125,3 +125,21 @@ test('custom page drafts stay private and published pages and redirects resolve'
   assert.equal((await fetch(`${origin}/privacy`)).status, 200);
   assert.equal((await fetch(`${origin}/el/privacy`)).status, 200);
 });
+
+test('page previews are authenticated, noindexed and contain saved drafts rather than public content', async () => {
+  const initial = await adminPost('pages', { id: 'preview-page', locale: 'en', heading: 'Public heading', body: 'Published body', publish: true });
+  const saved = (await initial.json()).saved;
+  assert.equal((await adminPost('pages', { ...saved, heading: 'Private preview heading', body: '<script>not executable</script>' })).status, 200);
+  const route = `${origin}/api/admin/pages/en/preview-page/preview.html`;
+  assert.equal((await fetch(route)).status, 401);
+  const preview = await fetch(route, { headers: { cookie } });
+  assert.equal(preview.status, 200);
+  assert.match(preview.headers.get('x-robots-tag'), /noindex/);
+  assert.match(preview.headers.get('content-security-policy'), /frame-ancestors 'self'/);
+  const html = await preview.text();
+  assert.match(html, /Private preview heading/);
+  assert.equal(html.includes('<script>not executable</script>'), false);
+  const published = await (await fetch(`${origin}/pages/preview-page`)).text();
+  assert.match(published, /Public heading/);
+  assert.equal(published.includes('Private preview heading'), false);
+});

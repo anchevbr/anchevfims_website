@@ -1,11 +1,3 @@
-@import url('./base.css');
-@import url('./layout.css');
-@import url('./about.css');
-@import url('./projects.css');
-@import url('./admin.css');
-@import url('./experience.css?v=20261010-search-release');
-@import url('./consent.css?v=20261006-consent');
-
 @view-transition {
 	navigation: auto;
 }

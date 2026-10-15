@@ -6,6 +6,8 @@ html body * { letter-spacing: 0 !important; }
 .hero-positioning { font-family: 'Manrope', sans-serif; font-size: 1rem; line-height: 1.7; color: #f3f3ed; max-width: 38rem; margin: 1.6rem 0 0; }
 .hero-title-accent { color: #f5f5ec; -webkit-text-stroke: 0; }
 .hero-kicker { color: #e6c17c; }
+.hero-poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .26; filter: saturate(.75) contrast(1.06) brightness(.48); transform: scale(1.04); }
+.video-stage.is-playing > .hero-poster { visibility: hidden; }
 .opening-sequence { min-height: 140svh; }
 .tagline-story { min-height: 240svh; }
 .services-page { height: 310svh; }
