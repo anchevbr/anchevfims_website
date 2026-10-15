@@ -25,6 +25,24 @@ test('homepage settings control localized copy, social metadata and indexing wit
     const draft = await response.json();
     assert.equal((await fetch(`${origin}/api/settings`)).status, 200);
     assert.equal((await (await fetch(`${origin}/api/settings`)).json()).homepage?.en?.heroPositioning, original.homepage?.en?.heroPositioning);
+    const previewUrl = `${origin}/api/admin/settings/preview.html?version=${draft.version}`;
+    assert.equal((await fetch(previewUrl)).status, 401);
+    assert.equal((await fetch(`${previewUrl}&path=//example.com`, { headers: { cookie } })).status, 400);
+    assert.equal((await fetch(`${origin}/api/admin/settings/preview.html?version=${original.version}`, { headers: { cookie } })).status, 409);
+    for (const [route, text] of [['/', 'Custom English positioning'], ['/el/', 'Custom Greek positioning']]) {
+      const preview = await fetch(`${previewUrl}&path=${encodeURIComponent(route)}`, { headers: { cookie } });
+      assert.equal(preview.status, 200);
+      assert.equal(preview.headers.get('cache-control'), 'no-store');
+      assert.equal(preview.headers.get('x-robots-tag'), 'noindex,nofollow,noarchive');
+      assert.equal(preview.headers.get('x-frame-options'), 'SAMEORIGIN');
+      assert.match(preview.headers.get('content-security-policy'), /frame-ancestors 'self'/);
+      const $ = load(await preview.text());
+      assert.equal($('.hero-positioning').text(), text);
+      assert.equal($('meta[name="robots"]').attr('content'), 'noindex,nofollow,noarchive');
+      assert.ok($(`a[href*="path=${encodeURIComponent(route === '/el/' ? '/el/studio' : '/studio')}"]`).length > 0);
+      const publicPage = load(await (await fetch(`${origin}${route}`)).text());
+      assert.notEqual(publicPage('.hero-positioning').text(), text);
+    }
     assert.equal((await fetch(`${origin}/api/admin/settings/publish`, { method: 'POST', headers, body: JSON.stringify({ version: draft.version }) })).status, 200);
     for (const [route, text] of [['/', 'Custom English positioning'], ['/el/', 'Custom Greek positioning']]) {
       const $ = load(await (await fetch(`${origin}${route}`)).text());

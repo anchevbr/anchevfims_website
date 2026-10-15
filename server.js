@@ -8,7 +8,7 @@ import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { z, ZodError } from 'zod';
 import { ContentStore } from './src/database.js';
-import { installAuthentication } from './src/auth.js';
+import { installAuthentication, requirePermission } from './src/auth.js';
 import { installAdminApi } from './src/admin-api.js';
 import { MediaService } from './src/media.js';
 import { renderPublicDocument, renderPageBody } from './src/public-pages.js';
@@ -559,10 +559,10 @@ const getProjectSchema = ({ origin, canonical, image, siteImage, logo, project, 
   };
 };
 
-const getSeoPage = async (req) => {
+const getSeoPage = async (req, settingsOverride) => {
   const language = req.path === '/el' || req.path.startsWith('/el/') ? 'el' : 'en';
   const [settings, clients, articles, rawProjects, podcast] = await Promise.all([
-    readSettings(),
+    settingsOverride ?? readSettings(),
     readClients(),
     readArticles(),
     readProjects().catch(() => []),
@@ -911,9 +911,15 @@ const renderDynamicContent = (template, data) => {
   return html;
 };
 
-const renderSeoPage = async (req, res) => {
+const renderSeoPage = async (req, res, options = {}) => {
   try {
-    const seo = await getSeoPage(req);
+    if (options.path) {
+      const routedRequest = Object.create(req);
+      Object.defineProperty(routedRequest, 'path', { value: options.path });
+      req = routedRequest;
+    }
+    const seo = await getSeoPage(req, options.settings);
+    if (options.preview) { seo.robots = 'noindex,nofollow,noarchive'; seo.alternates = []; }
     const template = await fs.readFile(seo.renderData.project || seo.renderData.studio || seo.renderData.servicePage || seo.renderData.episode || seo.renderData.customPage ? projectTemplateFile : indexFile, 'utf8');
     const seoMarkup = `<!-- SEO:START -->\n    ${getSeoTags(seo)}\n    <!-- SEO:END -->`;
     const renderedTemplate = seo.renderData.customPage
@@ -928,7 +934,7 @@ const renderSeoPage = async (req, res) => {
       ? injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(seo.renderData.project, seo.renderData.projects, seo.description))
       : renderDynamicContent(template, seo.renderData);
     res.setHeader('Cache-Control', 'no-store');
-    const document = renderPublicDocument(renderedTemplate.replace(SEO_BLOCK, seoMarkup), { language: seo.language || 'en', route: req.path, store, home: req.path === '/' || req.path === '/index.html' || req.path === '/el/', project: seo.renderData.project });
+    const document = renderPublicDocument(renderedTemplate.replace(SEO_BLOCK, seoMarkup), { language: seo.language || 'en', route: req.path, store, settings: options.settings, preview: options.preview, home: req.path === '/' || req.path === '/index.html' || req.path === '/el/', project: seo.renderData.project });
     res.status(seo.status || 200).type('html').send(document.replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (_error) {
     res.status(500).send('Unable to render this page.');
@@ -972,6 +978,17 @@ installAuthentication(app, store);
 installAdminApi(app, store);
 media.install(app);
 if (process.env.MEDIA_WORKER !== '0') media.start();
+app.get('/api/admin/settings/preview.html', requirePermission('settings'), async (req, res, next) => {
+  try {
+    const query = z.object({ path: z.string().max(200).regex(/^\/(?:[a-z0-9-]+\/?)*$/).default('/'), version: z.coerce.number().int().positive() }).parse(req.query);
+    const { version, hasUnpublishedChanges: _draft, ...settings } = store.adminSettings();
+    if (query.version !== version) return res.status(409).json({ error: 'Settings have changed. Reload before previewing.' });
+    res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+    await renderSeoPage(req, res, { path: query.path, settings: { ...DEFAULT_SETTINGS, ...settings }, preview: { version } });
+  } catch (error) { next(error); }
+});
 app.get('/api/admin/projects/:id/preview.html', async (req, res, next) => {
   try {
     const project = store.project(req.params.id);

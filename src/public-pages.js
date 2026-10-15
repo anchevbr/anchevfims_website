@@ -88,14 +88,14 @@ export const renderPageBody = (page, language = 'en') => {
   return `<article class="editorial-page"><header><a href="${language === 'el' ? '/el/' : '/'}" class="editorial-page__brand">ANCHEV FILMS</a><h1>${escapeHtml(page.heading)}</h1>${page.intro ? `<p class="editorial-page__intro">${escapeHtml(page.intro)}</p>` : ''}</header><main>${page.body ? `<p>${escapeHtml(page.body).replace(/\n/g, '<br />')}</p>` : ''}${blocks}</main><footer><a class="case-study__external" href="${language === 'el' ? '/el/#contact-page' : '/#contact-page'}">${words.startProject}</a></footer></article>`;
 };
 
-export const renderPublicDocument = (html, { language = 'en', route = '/', store, home = false, project = null }) => {
+export const renderPublicDocument = (html, { language = 'en', route = '/', store, settings: settingsOverride, preview = null, home = false, project = null }) => {
   const $ = load(html);
   const words = copy(language);
   $('html').attr('lang', language);
   $('head').append('<link rel="stylesheet" href="/styles/refinements.css?v=20261015-platform" />');
   $('body').prepend(`<a class="public-skip-link" href="${home ? '#work-page' : '#project-page-root'}">${language === 'el' ? 'Μετάβαση στο περιεχόμενο' : 'Skip to content'}</a>`);
   if (home) {
-    const contentSettings = store.settings();
+    const contentSettings = settingsOverride || store.settings();
     const source = contentSettings.videoSource || '/media/hero-video.mp4';
     const original = store.db.prepare('SELECT id FROM media WHERE url=?').get(source);
     const generatedPoster = original ? store.db.prepare("SELECT url FROM media_derivatives WHERE media_id=? AND kind='poster'").get(original.id)?.url : null;
@@ -137,7 +137,7 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
         const current = store.project($(element).attr('data-project-id'), { publicOnly: true, locale: 'el' });
         if (!current?.hasGreek) $(element).attr('lang', 'en');
       });
-      $('#contact-page-content').html(renderContactPageMarkup({ ...store.settings().contact, social: store.settings().social }, 'el'));
+      $('#contact-page-content').html(renderContactPageMarkup({ ...contentSettings.contact, social: contentSettings.social }, 'el'));
     }
     for (const key of ['privacy', 'cookies', 'terms']) {
       const managed = key !== 'privacy' && store.page(key, language, true);
@@ -212,5 +212,17 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
   $('video[data-project-preview]').attr('preload', 'none');
   $('.podcast-art').removeAttr('aria-label');
   $('.brandmark img').attr({ width: 72, height: 72 });
+  if (preview) {
+    $('html').attr('data-settings-preview', String(preview.version));
+    $('#consent-banner, #consent-preferences').attr('hidden', '');
+    $('#inquiry-form [type="submit"]').attr('disabled', '');
+    $('a[href]').each((_index, element) => {
+      const link = $(element);
+      const href = link.attr('href');
+      if (!href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/') || /\.[a-z0-9]+(?:$|[?#])/i.test(href)) return;
+      const target = new URL(href, 'https://preview.invalid');
+      link.attr('href', `/api/admin/settings/preview.html?version=${preview.version}&path=${encodeURIComponent(target.pathname)}${target.hash}`);
+    });
+  }
   return $.html();
 };

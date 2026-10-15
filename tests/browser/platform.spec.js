@@ -245,6 +245,38 @@ test('homepage copy and SEO settings save through the console in both locales', 
     await page.getByRole('tab', { name: 'Business', exact: true }).waitFor();
     await expect(page.getByLabel('Homepage social image', { exact: true })).toHaveValue('/assets/anchevlogo.png');
     await expect(page.getByLabel('Exclude homepage from search indexing', { exact: true })).toBeChecked();
+    const consentBeforePreview = await page.evaluate(() => {
+      const previous = localStorage.getItem('anchev-consent-v1');
+      localStorage.setItem('anchev-consent-v1', JSON.stringify({ analytics: true, advertising: true }));
+      return previous;
+    });
+    for (const language of ['en', 'el']) {
+      await page.getByRole('button', { name: `Preview / ${language.toUpperCase()}`, exact: true }).click();
+      const preview = page.frameLocator('iframe[title="Settings preview"]');
+      await preview.locator('#hero-video').waitFor({ state: 'attached' });
+      await expect(preview.locator('.hero-positioning')).toHaveText(`${language} opening ${testInfo.project.name}`);
+      await expect(preview.locator('#services-page .experience-heading > p:last-child')).toHaveText(`${language} services ${testInfo.project.name}`);
+      await expect(preview.locator('.language-switch a[lang="el"]')).toHaveAttribute('href', /\/api\/admin\/settings\/preview.html\?version=\d+&path=%2Fel%2F/);
+      await expect(preview.locator('#google-analytics-tag')).toHaveCount(0);
+      await expect(preview.locator('#inquiry-form [type="submit"]')).toBeDisabled();
+      await expect(preview.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,nofollow,noarchive');
+      await page.screenshot({ path: testInfo.outputPath(`settings-preview-${language}.png`) });
+      await preview.locator('.language-switch a[lang="el"]').click();
+      await expect(preview.locator('.hero-positioning')).toHaveText(`el opening ${testInfo.project.name}`);
+      await preview.locator('.language-switch a[lang="en"]').click();
+      await expect(preview.locator('.hero-positioning')).toHaveText(`en opening ${testInfo.project.name}`);
+      const studioLink = preview.locator('.desktop-nav a[href*="path=%2Fstudio"]');
+      const studioUrl = await studioLink.getAttribute('href');
+      const studio = await page.request.get(studioUrl);
+      expect(studio.status()).toBe(200);
+      expect(studio.headers()['x-robots-tag']).toBe('noindex,nofollow,noarchive');
+      await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    }
+    await page.evaluate((previous) => {
+      if (previous === null) localStorage.removeItem('anchev-consent-v1');
+      else localStorage.setItem('anchev-consent-v1', previous);
+    }, consentBeforePreview);
+    expect(await (await page.request.get('/api/settings')).json()).toEqual(publishedBefore);
     await page.getByRole('button', { name: 'Publish settings', exact: true }).click();
     await expect(page.locator('[role="status"]').filter({ hasText: 'Settings published.' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Publish settings', exact: true })).toHaveCount(0);

@@ -60,6 +60,7 @@ export const renderContact = () => {
   form.dataset.bound = 'true';
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (document.documentElement.hasAttribute('data-settings-preview')) return;
     const words = copy();
     const submit = form.querySelector('[type="submit"]');
     const status = document.getElementById('inquiry-status');

@@ -276,7 +276,7 @@ const userEditor = (user = {}) => {
   state.editUser = user;
   showDialog(user.name || 'New user', `<form id="user-form"><div class="form-grid">${field('Name', 'name', user.name, { required: true })}${field('Email', 'email', user.email, { type: 'email', required: true })}${field(user.id ? 'New password' : 'Password', 'password', '', { type: 'password', required: !user.id })}<div class="field"><label for="user-role">Role</label><select id="user-role" name="role">${['viewer', 'editor', 'administrator', 'owner'].map((role) => `<option value="${role}" ${user.role === role ? 'selected' : ''}>${role[0].toUpperCase() + role.slice(1)}</option>`).join('')}</select></div>${checkbox('Active account', 'active', user.active ?? true)}</div><footer class="form-footer"><button type="submit" class="button button--primary">Save user</button></footer></form>`);
 };
-const settingsActions = () => can('settings') ? `<button type="submit" class="button">${icon('save')}Save draft</button>${state.settings.hasUnpublishedChanges ? `${button('Publish settings', 'send', 'data-publish-settings', true)}${button('Discard draft', 'undo-2', 'data-discard-settings')}` : ''}` : '';
+const settingsActions = () => can('settings') ? `<button type="submit" class="button">${icon('save')}Save draft</button>${button('Preview / EN', 'eye', 'data-preview-settings="en"')}${button('Preview / EL', 'eye', 'data-preview-settings="el"')}${state.settings.hasUnpublishedChanges ? `${button('Publish settings', 'send', 'data-publish-settings', true)}${button('Discard draft', 'undo-2', 'data-discard-settings')}` : ''}` : '';
 const settingsView = async () => {
   const settings = await api('/settings'); state.settings = settings;
   return `${heading('Settings', `<span class="save-state" id="settings-version">Version ${settings.version} / ${settings.hasUnpublishedChanges ? 'Draft changes' : 'Published'}</span>${button('Revisions', 'history', 'data-settings-revisions')}`)}<div class="editor-tabs" role="tablist" aria-label="Settings">${[['general', 'Business'], ['home-en', 'Homepage / EN'], ['home-el', 'Homepage / EL'], ['delivery', 'Media'], ['security', 'Security']].map(([key, label], index) => `<button class="editor-tab" type="button" role="tab" aria-selected="${index === 0}" id="tab-${key}" aria-controls="panel-${key}" data-editor-tab="${key}">${label}</button>`).join('')}</div><form id="settings-form">
@@ -376,6 +376,11 @@ document.addEventListener('click', async (event) => {
     if (target.hasAttribute('data-page-revisions')) {
       const data = await api(`/pages/${state.page.locale}/${state.page.id}/revisions`);
       showDialog('Page revisions', data.revisions.length ? `<div class="table-wrap"><table><thead><tr><th>Revision</th><th>Saved</th><th>Action</th></tr></thead><tbody>${data.revisions.map((revision) => `<tr><td>#${revision.id}</td><td>${date(revision.created_at)}</td><td>${can('write') ? button('Restore draft', 'rotate-ccw', `data-restore-page-revision="${revision.id}"`) : ''}</td></tr>`).join('')}</tbody></table></div>` : empty('No earlier revisions yet.'));
+    }
+    if (target.hasAttribute('data-preview-settings')) {
+      if (state.dirty) { notify('Save the draft before previewing your latest changes.', true); return; }
+      const path = target.dataset.previewSettings === 'el' ? '/el/' : '/';
+      showDialog('Saved settings preview', `<iframe class="preview-frame" title="Settings preview" src="/api/admin/settings/preview.html?version=${state.settings.version}&path=${encodeURIComponent(path)}"></iframe>`);
     }
     if (target.hasAttribute('data-settings-revisions')) {
       const data = await api('/settings/revisions');
