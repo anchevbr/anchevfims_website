@@ -2,9 +2,18 @@ import express from 'express';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import multer from 'multer';
 import crypto from 'crypto';
 import { XMLParser } from 'fast-xml-parser';
+import helmet from 'helmet';
+import compression from 'compression';
+import { rateLimit } from 'express-rate-limit';
+import { z, ZodError } from 'zod';
+import { ContentStore } from './src/database.js';
+import { installAuthentication, requirePermission } from './src/auth.js';
+import { installAdminApi } from './src/admin-api.js';
+import { MediaService } from './src/media.js';
+import { renderPublicDocument, renderPageBody } from './src/public-pages.js';
+import { createPublicAssets } from './src/public-assets.js';
 import {
   renderAboutPageMarkup,
   renderArticlesMarkup,
@@ -17,15 +26,21 @@ import {
   renderProjectPageMarkup,
   renderStudioPageMarkup
 } from './public/scripts/modules/content-markup.js';
-import { servicePages, getServicePage, getServicePath, getLanguageAlternates, renderServicePageMarkup } from './public/scripts/modules/service-pages.js';
+import { servicePages, getServicePage, getServicePath, getSiteContentPath, getLanguageAlternates, renderServicePageMarkup } from './public/scripts/modules/service-pages.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const port = process.env.PORT || 3000;
+const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, 'public');
-const uploadsDir = path.join(publicDir, 'uploads');
-const dataDir = path.join(__dirname, 'data');
+const publicAssets = process.env.NODE_ENV === 'production' || process.env.BUNDLE_PUBLIC_ASSETS === '1' ? await createPublicAssets(publicDir) : null;
+const uploadsDir = path.resolve(process.env.UPLOADS_DIR || path.join(publicDir, 'uploads'));
+const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
+const store = new ContentStore(dataDir);
+store.importJson();
+store.startInquiryRetention();
+const media = new MediaService(store, uploadsDir);
+if (process.env.NODE_ENV === 'production' && !/^https:\/\//.test(process.env.SITE_URL || '')) throw new Error('Production requires an HTTPS SITE_URL.');
 const indexFile = path.join(publicDir, 'index.html');
 const projectTemplateFile = path.join(publicDir, 'project.html');
 const projectsFile = path.join(dataDir, 'projects.json');
@@ -48,23 +63,6 @@ const SERVICE_CATALOG = [
   'Post-Production',
   'Delivery & Versions'
 ];
-// SHA-256 hash of the admin password — never store the plaintext password here
-const ADMIN_SECRET_HASH = process.env.ADMIN_SECRET_HASH;
-
-const hashSecret = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
-
-const isValidSecret = (provided) => {
-  if (!provided || !ADMIN_SECRET_HASH) return false;
-  try {
-    const a = Buffer.from(hashSecret(provided), 'hex');
-    const b = Buffer.from(ADMIN_SECRET_HASH, 'hex');
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
-};
-
 const DEFAULT_SETTINGS = {
   videoSource: '/media/hero-video.mp4',
   mobileVideoSource: '/media/hero-video-mobile.mp4',
@@ -75,121 +73,11 @@ const DEFAULT_SETTINGS = {
   ]
 };
 
-const ALLOWED_MIME = new Set([
-  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif',
-  'video/mp4', 'video/webm', 'video/quicktime'
-]);
-const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
-
-const storage = multer.diskStorage({
-  destination: async (_req, _file, cb) => {
-    await fs.mkdir(uploadsDir, { recursive: true });
-    cb(null, uploadsDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
-    const rand = crypto.randomBytes(8).toString('hex');
-    cb(null, `${rand}${ext}`);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('File type not allowed'));
-    }
-  }
-});
-
-const readProjects = async () => {
-  const raw = await fs.readFile(projectsFile, 'utf8');
-  return JSON.parse(raw);
-};
-
-const writeProjects = async (projects) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(projectsFile, `${JSON.stringify(projects, null, 2)}\n`, 'utf8');
-};
-
-const readClients = async () => {
-  try {
-    const raw = await fs.readFile(clientsFile, 'utf8');
-    return JSON.parse(raw);
-  } catch (_err) {
-    return [];
-  }
-};
-
-const writeClients = async (clients) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(clientsFile, `${JSON.stringify(clients, null, 2)}\n`, 'utf8');
-};
-
-const readArticles = async () => {
-  try {
-    const raw = await fs.readFile(articlesFile, 'utf8');
-    return JSON.parse(raw);
-  } catch (_err) {
-    return [];
-  }
-};
-
-const writeArticles = async (articles) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(articlesFile, `${JSON.stringify(articles, null, 2)}\n`, 'utf8');
-};
-
-const readSettings = async () => {
-  try {
-    const raw = await fs.readFile(settingsFile, 'utf8');
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch (_err) {
-    return { ...DEFAULT_SETTINGS };
-  }
-};
-
-const writeSettings = async (settings) => {
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(settingsFile, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
-};
-
-const sanitizeText = (value) => String(value || '').trim();
-
-const sanitizeExternalUrl = (value) => {
-  try {
-    const url = new URL(sanitizeText(value));
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
-  } catch (_error) {
-    return '';
-  }
-};
-
-const sanitizeTextList = (value) => (Array.isArray(value)
-  ? value
-    .map((entry) => sanitizeText(entry))
-    .filter(Boolean)
-  : []);
-
-const sanitizeArticle = (input) => {
-  const rawId = sanitizeText(input.id)
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  const rawDate = sanitizeText(input.publishedAt);
-  return {
-    id: rawId || `article-${crypto.randomUUID()}`,
-    title: sanitizeText(input.title),
-    publisher: sanitizeText(input.publisher),
-    publishedAt: /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : '',
-    url: sanitizeExternalUrl(input.url),
-    summary: sanitizeText(input.summary),
-    language: ['el', 'en'].includes(input.language) ? input.language : 'en'
-  };
-};
+store.setSettings({ ...DEFAULT_SETTINGS, ...store.settings() });
+const readProjects = async () => store.projects({ publicOnly: true });
+const readClients = async () => store.clients();
+const readArticles = async () => store.articles();
+const readSettings = async () => ({ ...DEFAULT_SETTINGS, ...store.settings() });
 
 const podcastFeedParser = new XMLParser({
   ignoreAttributes: false,
@@ -334,8 +222,7 @@ const getSiteOrigin = (req) => {
   const host = /^[a-z0-9.-]+(?::\d+)?$/i.test(requestedHost)
     ? requestedHost
     : `localhost:${port}`;
-  const forwardedProtocol = cleanSeoText(req.get('x-forwarded-proto')).split(',')[0].toLowerCase();
-  const protocol = forwardedProtocol === 'https' || req.protocol === 'https' ? 'https' : 'http';
+  const protocol = req.protocol === 'https' ? 'https' : 'http';
   return `${protocol}://${host}`;
 };
 
@@ -370,7 +257,7 @@ const getImageMimeType = (value) => {
 };
 
 const getWorkIdFromPath = (pathname) => {
-  const match = pathname.match(/^\/work\/([^/]+)\/?$/);
+  const match = pathname.match(/^\/(?:el\/)?work\/([^/]+)\/?$/);
   if (!match) return '';
   try {
     return decodeURIComponent(match[1]).trim().toLowerCase();
@@ -675,9 +562,10 @@ const getProjectSchema = ({ origin, canonical, image, siteImage, logo, project, 
   };
 };
 
-const getSeoPage = async (req) => {
+const getSeoPage = async (req, settingsOverride, pageOverride) => {
+  const language = req.path === '/el' || req.path.startsWith('/el/') ? 'el' : 'en';
   const [settings, clients, articles, rawProjects, podcast] = await Promise.all([
-    readSettings(),
+    settingsOverride ?? readSettings(),
     readClients(),
     readArticles(),
     readProjects().catch(() => []),
@@ -686,11 +574,36 @@ const getSeoPage = async (req) => {
   const projects = Array.isArray(rawProjects) ? rawProjects : [];
   const origin = getSiteOrigin(req);
   const workId = getWorkIdFromPath(req.path);
-  const project = workId ? projects.find((entry) => entry.id === workId) : null;
-  const isHomeRoute = req.path === '/' || req.path === '/index.html';
+  const candidate = workId ? store.project(workId, { publicOnly: true, locale: language }) : null;
+  const project = language === 'el' && !candidate?.hasGreek ? null : candidate;
+  const isHomeRoute = req.path === '/' || req.path === '/index.html' || req.path === '/el/';
   const isAdminRoute = req.path === '/studio/anchev' || req.path.startsWith('/studio/');
   const logo = getAbsoluteUrl(origin, '/assets/anchevlogo.png');
   const defaultImage = getAbsoluteUrl(origin, '/assets/anchev-films-social.jpg');
+  const customId = req.path.match(/^\/(?:el\/)?pages\/([a-z0-9-]+)$/)?.[1];
+  const privacyRoute = req.path === '/privacy' || req.path === '/el/privacy';
+  const customPage = customId ? store.page(customId, language, true) : privacyRoute ? store.page('privacy', language, true) || {
+    id: 'privacy', locale: language,
+    heading: language === 'el' ? 'Πολιτική απορρήτου' : 'Privacy notice',
+    intro: language === 'el' ? 'Πληροφορίες για τα στοιχεία επικοινωνίας και τις επιλογές απορρήτου στην Anchev Films.' : 'How Anchev Films handles inquiries and privacy choices on this website.',
+    body: language === 'el'
+      ? `Χρησιμοποιούμε το όνομα, το email, την εταιρεία και το μήνυμα που υποβάλλετε για να απαντήσουμε στο αίτημά σας και να συζητήσουμε πιθανή συνεργασία. Τα μηνύματα αποθηκεύονται στο προστατευμένο σύστημα διαχείρισης και διατηρούνται για ${store.inquiryRetentionDays} ημέρες και διαγράφονται στον επόμενο ωριαίο έλεγχο. Μπορείτε να ζητήσετε πρόσβαση, διόρθωση ή διαγραφή επικοινωνώντας στο ${settings.contact.email}.\n\nΤα cookies διαχείρισης είναι απαραίτητα μόνο για τη σύνδεση εξουσιοδοτημένων χρηστών. Τα εργαλεία Google Analytics και μέτρησης διαφήμισης ενεργοποιούνται σύμφωνα με τις επιλογές σας, οι οποίες αλλάζουν στις ρυθμίσεις cookies. Τα βίντεο YouTube φορτώνονται μετά από δική σας ενέργεια. Οι υπηρεσίες τρίτων εφαρμόζουν τις δικές τους πολιτικές απορρήτου.\n\nΓια ζητήματα προστασίας δεδομένων μπορείτε να απευθυνθείτε στην Ελληνική Αρχή Προστασίας Δεδομένων Προσωπικού Χαρακτήρα.`
+      : `We use the name, email address, company and message you submit to respond to your inquiry and discuss a possible production. Messages are stored in the protected administration system for ${store.inquiryRetentionDays} days and deleted at the next hourly cleanup. Request access, correction or deletion by contacting ${settings.contact.email}.\n\nAdmin session cookies are necessary only for authorized sign-in. Google Analytics and advertising measurement follow your optional consent choices, which can be changed through cookie settings. YouTube films load after your click. Third-party services apply their own privacy policies.\n\nYou may raise data-protection concerns with the Hellenic Data Protection Authority.`,
+    blocks: [], seo: { noindex: false }
+  } : null;
+  if (customPage?.heading) {
+    const canonical = getAbsoluteUrl(origin, req.path);
+    const description = customPage.seo?.description || limitSeoDescription(customPage.intro || customPage.body);
+    const counterpart = customId ? store.page(customId, language === 'el' ? 'en' : 'el', true) : privacyRoute;
+    return {
+      status: 200, title: customPage.seo?.title || `${customPage.heading} | ${SITE_NAME}`, description, canonical,
+      image: getAbsoluteUrl(origin, customPage.seo?.image) || defaultImage, imageAlt: customPage.heading,
+      ogType: 'website', language, robots: customPage.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large',
+      alternates: counterpart ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, `${locale === 'el' ? '/el' : ''}${privacyRoute ? '/privacy' : `/pages/${customId}`}`) })) : [],
+      schema: { '@context': 'https://schema.org', '@type': 'WebPage', name: customPage.heading, url: canonical, inLanguage: language, description },
+      renderData: { customPage, language }
+    };
+  }
   const episode = podcast?.episodes?.find((entry) => getPodcastEpisodePath(entry) === req.path);
   if (episode) {
     const canonical = getAbsoluteUrl(origin, getPodcastEpisodePath(episode));
@@ -710,17 +623,34 @@ const getSeoPage = async (req) => {
       renderData: { episode, podcast }
     };
   }
-  const servicePage = getServicePage(req.path);
-  const language = req.path.startsWith('/el/') ? 'el' : 'en';
+  const serviceSlug = req.path.match(/^\/(?:el\/)?services\/([a-z0-9-]+)$/)?.[1];
+  const servicePage = getServicePage(req.path, pageOverride || (serviceSlug ? store.page(`service-${serviceSlug}`, language, true) : null));
   const alternates = servicePage ? getLanguageAlternates(servicePage).map((entry) => ({
     language: entry.language,
     url: getAbsoluteUrl(origin, entry.path)
   })) : [];
 
+  const studioPage = /^\/(?:el\/)?studio$/.test(req.path) ? pageOverride || store.page('studio', language, true) : null;
+  if (studioPage) {
+    const canonical = getAbsoluteUrl(origin, req.path);
+    const image = getAbsoluteUrl(origin, studioPage.seo?.image || studioPage.blocks.find((block) => block.type === 'image')?.url || '/media/experience/studio-poster.jpg');
+    const description = studioPage.seo?.description || limitSeoDescription(studioPage.intro);
+    return {
+      status: 200, title: studioPage.seo?.title || `${studioPage.heading} | ${SITE_NAME}`, description, canonical,
+      image, imageAlt: studioPage.heading, language, alternates, ogType: 'website',
+      robots: studioPage.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large',
+      schema: { '@context': 'https://schema.org', '@graph': [
+        { '@type': 'WebPage', name: studioPage.heading, url: canonical, description, inLanguage: language, mainEntity: { '@id': `${canonical}#place` } },
+        { '@type': 'Place', '@id': `${canonical}#place`, name: studioPage.heading, url: canonical, description, image,
+          amenityFeature: studioPage.blocks.filter((block) => block.type === 'fact').map((block) => ({ '@type': 'LocationFeatureSpecification', name: block.title, value: block.text })) }
+      ] },
+      renderData: { studio: true, studioPage, visuals: [], language }
+    };
+  }
   if (servicePage && req.path !== '/studio') {
     const copy = servicePage[language];
     const canonical = getAbsoluteUrl(origin, getServicePath(servicePage, language));
-    const image = getAbsoluteUrl(origin, '/media/studio/studio-frame-01.jpg');
+    const image = getAbsoluteUrl(origin, servicePage.seo?.image || servicePage.heroImage || '/media/studio/studio-frame-01.jpg');
     const mainEntity = servicePage.isStudio ? {
       '@type': 'Place', '@id': `${canonical}#place`, name: 'Anchev Studio', url: canonical,
       description: copy.description, image,
@@ -732,10 +662,10 @@ const getSeoPage = async (req) => {
       provider: { '@id': `${origin}/#organization` }, areaServed: { '@type': 'Country', name: 'Greece' }
     };
     return {
-      status: 200, title: `${copy.title} | ${SITE_NAME}`, description: copy.description,
+      status: 200, title: servicePage.seo?.title || `${copy.title} | ${SITE_NAME}`, description: copy.description,
       canonical, image, imageAlt: 'Inside Anchev Studio in Melissia', imageType: 'image/jpeg',
       ogType: 'website', language, alternates,
-      robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+      robots: servicePage.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
       schema: { '@context': 'https://schema.org', '@graph': [
         getOrganizationNode({ origin, description: getHomeDescription(null), image: defaultImage, logo, settings }),
         { '@type': 'WebPage', '@id': `${canonical}#webpage`, name: copy.title, description: copy.description,
@@ -817,13 +747,15 @@ const getSeoPage = async (req) => {
   }
 
   if (project) {
-    const canonical = getAbsoluteUrl(origin, `/work/${encodeURIComponent(project.id)}`);
+    const canonical = getAbsoluteUrl(origin, `${language === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`);
     const projectImage = getAbsoluteUrl(origin, project.thumbnail);
-    const image = projectImage || defaultImage;
-    const description = getProjectDescription(project);
+    const image = getAbsoluteUrl(origin, project.seo?.image) || projectImage || defaultImage;
+    const description = project.seo?.description || getProjectDescription(project);
     return {
       status: 200,
-      title: `${project.name}${project.client ? ` | ${project.client}` : ''} | ${SITE_NAME}`,
+      title: project.seo?.title || `${project.name}${project.client ? ` | ${project.client}` : ''} | ${SITE_NAME}`,
+      language,
+      alternates: project.hasGreek ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, `${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`) })) : [],
       description,
       canonical,
       image,
@@ -834,7 +766,7 @@ const getSeoPage = async (req) => {
       imageWidth: projectImage ? null : 1200,
       imageHeight: projectImage ? null : 630,
       ogType: project.video ? 'video.other' : 'article',
-      robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+      robots: project.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
       schema: getProjectSchema({
         origin,
         canonical,
@@ -845,36 +777,40 @@ const getSeoPage = async (req) => {
         description,
         settings
       }),
-      renderData: { settings, clients, articles, projects, podcast, project }
+      renderData: { settings, clients, articles, projects, podcast, project, language }
     };
   }
 
-  const description = getHomeDescription(podcast);
+  const description = language === 'el' ? 'Η Anchev Films είναι εταιρεία κινηματογραφικής παραγωγής στην Αθήνα. Διαφημιστικά, εταιρικές ταινίες, γυρίσματα, στούντιο και post-production.' : settings.seo?.description || getHomeDescription(podcast);
+  const homeCanonical = getAbsoluteUrl(origin, language === 'el' ? '/el/' : '/');
+  const homeImage = settings.seo?.image ? getAbsoluteUrl(origin, settings.seo.image) : defaultImage;
   return {
     status: isHomeRoute || isAdminRoute ? 200 : 404,
-    title: `${SITE_NAME} | Film Production Company in Athens`,
+    title: language === 'el' ? `${SITE_NAME} | Κινηματογραφική παραγωγή στην Αθήνα` : settings.seo?.title || `${SITE_NAME} | Film Production Company in Athens`,
     description,
-    canonical: origin,
-    image: defaultImage,
+    canonical: homeCanonical,
+    language,
+    alternates: isHomeRoute ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, locale === 'el' ? '/el/' : '/') })) : [],
+    image: homeImage,
     imageAlt: `${SITE_NAME}, film production in Athens`,
-    imageType: 'image/jpeg',
-    imageWidth: 1200,
-    imageHeight: 630,
+    imageType: getImageMimeType(homeImage),
+    imageWidth: settings.seo?.image ? null : 1200,
+    imageHeight: settings.seo?.image ? null : 630,
     ogType: 'website',
     robots: isAdminRoute || !isHomeRoute
       ? 'noindex,nofollow,noarchive'
-      : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+      : settings.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
     schema: getHomeSchema({
       origin,
       description,
-      image: defaultImage,
+      image: homeImage,
       logo,
       settings,
       clients,
       articles,
       podcast
     }),
-    renderData: { settings, clients, articles, projects, podcast }
+    renderData: { settings, clients, articles, projects, podcast, language }
   };
 };
 
@@ -942,19 +878,21 @@ const getSitemapDates = async (podcast) => {
     getLatestTimestamp([projectsFile])
   ]);
   const podcastTimestamp = Date.parse(podcast?.updatedAt || '') || 0;
-  const latestHomeTimestamp = Math.max(homeTimestamp, podcastTimestamp);
+  const contentTimestamp = Date.parse(store.db.prepare("SELECT max(created_at) AS updated FROM audit WHERE action LIKE 'project.%' OR action LIKE 'page.%' OR action IN ('settings.save','clients.save','article.save','article.delete','legacy.import')").get().updated || '') || 0;
+  const latestHomeTimestamp = Math.max(homeTimestamp, podcastTimestamp, contentTimestamp);
   return {
     home: new Date(latestHomeTimestamp || Date.now()).toISOString().slice(0, 10),
-    projects: new Date(projectsTimestamp || homeTimestamp || Date.now()).toISOString().slice(0, 10)
+    projects: new Date(Math.max(projectsTimestamp, contentTimestamp) || homeTimestamp || Date.now()).toISOString().slice(0, 10)
   };
 };
 
-const getSitemapUrl = ({ location, lastModified, priority, changeFrequency, image, imageTitle }) => [
+const getSitemapUrl = ({ location, lastModified, priority, changeFrequency, image, imageTitle, alternates = [] }) => [
   '  <url>',
   `    <loc>${escapeHtml(location)}</loc>`,
   `    <lastmod>${lastModified}</lastmod>`,
   `    <changefreq>${changeFrequency}</changefreq>`,
   `    <priority>${priority}</priority>`,
+  ...alternates.map((entry) => `    <xhtml:link rel="alternate" hreflang="${entry.language}" href="${escapeHtml(entry.url)}" />`),
   ...(image ? [
     '    <image:image>',
     `      <image:loc>${escapeHtml(image)}</image:loc>`,
@@ -994,79 +932,124 @@ const renderDynamicContent = (template, data) => {
   return html;
 };
 
-const renderSeoPage = async (req, res) => {
+const renderSeoPage = async (req, res, options = {}) => {
   try {
-    const seo = await getSeoPage(req);
-    const template = await fs.readFile(seo.renderData.project || seo.renderData.studio || seo.renderData.servicePage || seo.renderData.episode ? projectTemplateFile : indexFile, 'utf8');
+    if (options.path) {
+      const routedRequest = Object.create(req);
+      Object.defineProperty(routedRequest, 'path', { value: options.path });
+      req = routedRequest;
+    }
+    const seo = await getSeoPage(req, options.settings, options.page);
+    if (options.preview) { seo.robots = 'noindex,nofollow,noarchive'; seo.alternates = []; }
+    const template = await fs.readFile(seo.renderData.project || seo.renderData.studio || seo.renderData.servicePage || seo.renderData.episode || seo.renderData.customPage ? projectTemplateFile : indexFile, 'utf8');
     const seoMarkup = `<!-- SEO:START -->\n    ${getSeoTags(seo)}\n    <!-- SEO:END -->`;
-    const renderedTemplate = seo.renderData.episode
+    const renderedTemplate = seo.renderData.customPage
+      ? injectRootMarkup(template, 'project-page-root', renderPageBody(seo.renderData.customPage, seo.language))
+      : seo.renderData.episode
       ? injectRootMarkup(template, 'project-page-root', renderPodcastPageMarkup(seo.renderData.episode, seo.renderData.podcast))
       : seo.renderData.servicePage
       ? injectRootMarkup(template, 'project-page-root', renderServicePageMarkup(seo.renderData.servicePage, seo.renderData.language, seo.renderData.projects, seo.renderData.settings.contact || {}))
       : seo.renderData.studio
-      ? injectRootMarkup(template, 'project-page-root', renderStudioPageMarkup(seo.renderData.visuals))
+      ? injectRootMarkup(template, 'project-page-root', renderStudioPageMarkup(seo.renderData.visuals, seo.renderData.studioPage, seo.language))
       : seo.renderData.project
       ? injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(seo.renderData.project, seo.renderData.projects, seo.description))
       : renderDynamicContent(template, seo.renderData);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(seo.status || 200).type('html').send(renderedTemplate.replace(SEO_BLOCK, seoMarkup).replace('<html lang="en">', `<html lang="${seo.language || 'en'}">`));
+    const document = renderPublicDocument(renderedTemplate.replace(SEO_BLOCK, seoMarkup), { language: seo.language || 'en', route: req.path, store, settings: options.settings, page: options.page, preview: options.preview, home: req.path === '/' || req.path === '/index.html' || req.path === '/el/', project: seo.renderData.project });
+    res.status(seo.status || 200).type('html').send((publicAssets ? publicAssets.render(document) : document).replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
   } catch (_error) {
     res.status(500).send('Unable to render this page.');
   }
 };
 
-const sanitizeProject = (input) => ({
-  id: sanitizeText(input.id)
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, ''),
-  name: sanitizeText(input.name),
-  client: sanitizeText(input.client),
-  category: sanitizeText(input.category),
-  year: sanitizeText(input.year),
-  link: sanitizeText(input.link),
-  thumbnail: sanitizeText(input.thumbnail),
-  video: sanitizeText(input.video),
-  preview: sanitizeText(input.preview),
-  behindFrame: sanitizeText(input.behindFrame),
-  behindVideo: sanitizeText(input.behindVideo),
-  pressLink: sanitizeText(input.pressLink),
-  pressTitle: sanitizeText(input.pressTitle),
-  location: sanitizeText(input.location),
-  duration: sanitizeText(input.duration),
-  director: sanitizeText(input.director),
-  producer: sanitizeText(input.producer),
-  dop: sanitizeText(input.dop),
-  services: sanitizeTextList(input.services),
-  deliverables: sanitizeTextList(input.deliverables),
-  brief: sanitizeText(input.brief),
-  approach: sanitizeText(input.approach),
-  production: sanitizeText(input.production),
-  frames: sanitizeTextList(input.frames),
-  credits: Array.isArray(input.credits)
-    ? input.credits
-        .filter((c) => c && typeof c.role === 'string' && typeof c.name === 'string')
-        .map((c) => ({ role: String(c.role).trim(), name: String(c.name).trim() }))
-        .filter((c) => c.role || c.name)
-    : [],
-  note: sanitizeText(input.note)
-});
-
-const requireAdmin = (req, res, next) => {
-  if (!isValidSecret(req.header('x-admin-secret'))) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-  next();
-};
-
 app.disable('x-powered-by');
-app.use(express.json());
+app.use(compression({ filter: (req, res) => !req.path.startsWith('/api/') && !req.path.startsWith('/admin') && compression.filter(req, res) }));
+if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+app.use((_req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(18).toString('base64');
+  next();
+});
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", (_req, res) => `'nonce-${res.locals.nonce}'`, 'https://www.googletagmanager.com'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'https:', 'data:'],
+      mediaSrc: ["'self'", 'https:'],
+      connectSrc: ["'self'", 'https://*.google-analytics.com', 'https://*.analytics.google.com', 'https://www.google.com', 'https://*.doubleclick.net'],
+      frameSrc: ["'self'", 'https://www.youtube-nocookie.com', 'https://www.youtube.com', 'https://player.vimeo.com'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  strictTransportSecurity: process.env.NODE_ENV === 'production' ? undefined : false
+}));
+app.use('/api/admin', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+app.use('/api/admin', rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
+app.use(express.json({ limit: '256kb' }));
+installAuthentication(app, store);
+installAdminApi(app, store);
+media.install(app);
+const mediaRecovery = await media.reconcile();
+if (mediaRecovery.length) console.info(JSON.stringify({ event: 'media.reconciliation', results: mediaRecovery }));
+if (process.env.MEDIA_WORKER !== '0') media.start();
+app.get('/api/admin/settings/preview.html', requirePermission('settings'), async (req, res, next) => {
+  try {
+    const query = z.object({ path: z.string().max(200).regex(/^\/(?:[a-z0-9-]+\/?)*$/).default('/'), version: z.coerce.number().int().positive() }).parse(req.query);
+    const { version, hasUnpublishedChanges: _draft, ...settings } = store.adminSettings();
+    if (query.version !== version) return res.status(409).json({ error: 'Settings have changed. Reload before previewing.' });
+    res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+    await renderSeoPage(req, res, { path: query.path, settings: { ...DEFAULT_SETTINGS, ...settings }, preview: { version } });
+  } catch (error) { next(error); }
+});
+app.get('/api/admin/projects/:id/preview.html', async (req, res, next) => {
+  try {
+    const project = store.project(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found.' });
+    const template = await fs.readFile(projectTemplateFile, 'utf8');
+    const markup = injectRootMarkup(template, 'project-page-root', renderProjectPageMarkup(project, [], project.note || project.brief || ''));
+    res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+    res.type('html').send(markup.replace(SEO_BLOCK, '<meta name="robots" content="noindex,nofollow,noarchive" />').replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
+  } catch (error) { next(error); }
+});
+app.get('/api/admin/pages/:locale/:id/preview.html', async (req, res, next) => {
+  try {
+    const page = store.page(req.params.id, req.params.locale);
+    if (!page || !['en', 'el'].includes(req.params.locale)) return res.status(404).json({ error: 'Page not found.' });
+    const sitePath = getSiteContentPath(page.id, page.locale);
+    if (sitePath) {
+      res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+      return renderSeoPage(req, res, { path: sitePath, page, preview: {} });
+    }
+    const template = await fs.readFile(projectTemplateFile, 'utf8');
+    const markup = injectRootMarkup(template, 'project-page-root', renderPageBody(page, page.locale));
+    const document = renderPublicDocument(markup.replace(SEO_BLOCK, '<meta name="robots" content="noindex,nofollow,noarchive" />'), { language: page.locale, route: `${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, store });
+    res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', res.getHeader('Content-Security-Policy').replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
+    res.type('html').send(document.replace(/<script\b/g, `<script nonce="${res.locals.nonce}"`));
+  } catch (error) { next(error); }
+});
+publicAssets?.install(app);
 const servePublicFiles = express.static(publicDir, {
   extensions: ['html'],
   index: false,
-  maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+  maxAge: '1h',
   setHeaders(res, filePath) {
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-store');
@@ -1077,26 +1060,13 @@ const servePublicFiles = express.static(publicDir, {
 });
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: Boolean(store.db.prepare('SELECT 1 AS ok').get().ok), release: process.env.RELEASE_VERSION || 'development' });
 });
 
-app.get('/api/admin/verify', requireAdmin, (_req, res) => {
-  res.json({ ok: true });
-});
-
-app.post('/api/admin/upload', requireAdmin, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    res.status(400).json({ error: 'No file received' });
-    return;
-  }
-  res.json({ url: `/uploads/${req.file.filename}` });
-}, (err, _req, res, _next) => {
-  res.status(400).json({ error: err.message || 'Upload failed' });
-});
-
-app.get('/api/projects', async (_req, res) => {
+app.get('/api/projects', async (req, res) => {
   try {
-    const projects = await readProjects();
+    const projects = store.projects({ publicOnly: true, locale: req.query.lang === 'el' ? 'el' : 'en' });
     res.json({ projects });
   } catch (_error) {
     res.status(500).json({ error: 'Failed to load projects' });
@@ -1131,23 +1101,6 @@ app.get('/api/podcast', async (_req, res) => {
   }
 });
 
-app.post('/api/admin/clients', requireAdmin, async (req, res) => {
-  try {
-    const raw = req.body.clients;
-    if (!Array.isArray(raw)) {
-      res.status(400).json({ error: 'clients must be an array' });
-      return;
-    }
-    const clients = raw
-      .map((c) => String(c || '').trim().toUpperCase())
-      .filter(Boolean);
-    await writeClients(clients);
-    res.json({ clients });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save clients' });
-  }
-});
-
 app.get('/api/settings', async (_req, res) => {
   try {
     res.json(await readSettings());
@@ -1156,129 +1109,22 @@ app.get('/api/settings', async (_req, res) => {
   }
 });
 
-app.post('/api/admin/settings', requireAdmin, async (req, res) => {
-  try {
-    const { videoSource, mobileVideoSource, showreelSource, contact, social } = req.body;
-    const settings = {
-      videoSource: String(videoSource || '').trim(),
-      mobileVideoSource: String(mobileVideoSource || '').trim(),
-      showreelSource: String(showreelSource || '').trim(),
-      contact: {
-        email: String(contact?.email || '').trim(),
-        phone: String(contact?.phone || '').trim(),
-        location: String(contact?.location || '').trim()
-      },
-      social: Array.isArray(social)
-        ? social
-            .map((s) => ({ label: String(s.label || '').trim(), href: String(s.href || '').trim() }))
-            .filter((s) => s.label && s.href)
-        : []
-    };
-    await writeSettings(settings);
-    res.json(settings);
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save settings' });
-  }
+const inquirySchema = z.object({
+  name: z.string().trim().min(2).max(120), email: z.email().max(254), company: z.string().trim().max(200).default(''),
+  message: z.string().trim().min(20).max(5000), locale: z.enum(['en', 'el']).default('en'), privacy: z.literal(true),
+  website: z.string().max(100).default('')
 });
-
-app.post('/api/admin/articles', requireAdmin, async (req, res) => {
+app.post('/api/contact', rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false }), (req, res, next) => {
   try {
-    const article = sanitizeArticle(req.body);
-    if (!article.title || !article.url) {
-      res.status(400).json({ error: 'title and a valid URL are required' });
-      return;
-    }
-
-    const articles = await readArticles();
-    const existingIndex = articles.findIndex((entry) => entry.id === article.id);
-    if (existingIndex >= 0) {
-      articles[existingIndex] = article;
-    } else {
-      articles.unshift(article);
-    }
-    articles.sort((first, second) => String(second.publishedAt).localeCompare(String(first.publishedAt)));
-
-    await writeArticles(articles);
-    res.json({ articles, saved: article });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save article' });
-  }
+    const inquiry = inquirySchema.parse(req.body);
+    if (inquiry.website) return res.status(202).json({ ok: true });
+    const id = crypto.randomUUID();
+    store.db.prepare('INSERT INTO inquiries(id,name,email,company,message,locale,created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(id, inquiry.name, inquiry.email, inquiry.company, inquiry.message, inquiry.locale, new Date().toISOString());
+    res.status(201).json({ ok: true, reference: id });
+  } catch (error) { next(error); }
 });
-
-app.delete('/api/admin/articles/:id', requireAdmin, async (req, res) => {
-  try {
-    const articleId = sanitizeText(req.params.id).toLowerCase();
-    const articles = await readArticles();
-    if (!articles.some((entry) => entry.id === articleId)) {
-      res.status(404).json({ error: 'Article not found' });
-      return;
-    }
-
-    const nextArticles = articles.filter((entry) => entry.id !== articleId);
-    await writeArticles(nextArticles);
-    res.json({ articles: nextArticles, deleted: articleId });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to delete article' });
-  }
-});
-
-app.post('/api/admin/projects', requireAdmin, async (req, res) => {
-  try {
-    const project = sanitizeProject(req.body);
-    if (!project.id || !project.name) {
-      res.status(400).json({ error: 'id and name are required' });
-      return;
-    }
-
-    const projects = await readProjects();
-    const existingIndex = projects.findIndex((entry) => entry.id === project.id);
-
-    if (existingIndex >= 0) {
-      projects[existingIndex] = project;
-    } else {
-      projects.unshift(project);
-    }
-
-    await writeProjects(projects);
-    res.json({ projects, saved: project });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to save project' });
-  }
-});
-
-app.delete('/api/admin/projects/:id', requireAdmin, async (req, res) => {
-  try {
-    const projectId = String(req.params.id || '').trim().toLowerCase();
-    const projects = await readProjects();
-    const target = projects.find((entry) => entry.id === projectId);
-
-    if (!target) {
-      res.status(404).json({ error: 'Project not found' });
-      return;
-    }
-
-    const mediaFiles = [
-      target.thumbnail,
-      target.video,
-      target.preview,
-      target.behindFrame,
-      ...(Array.isArray(target.frames) ? target.frames : [])
-    ];
-    for (const filePath of new Set(mediaFiles)) {
-      if (filePath && filePath.startsWith('/uploads/')) {
-        const absPath = path.join(publicDir, filePath);
-        await fs.unlink(absPath).catch(() => {});
-      }
-    }
-
-    const nextProjects = projects.filter((entry) => entry.id !== projectId);
-    await writeProjects(nextProjects);
-    res.json({ projects: nextProjects, deleted: projectId });
-  } catch (_error) {
-    res.status(500).json({ error: 'Failed to delete project' });
-  }
-});
-
+app.use('/api', (_req, res) => res.status(404).json({ error: 'Endpoint not found.' }));
 app.get('/robots.txt', (req, res) => {
   const origin = getSiteOrigin(req);
   res.setHeader('Cache-Control', 'no-store');
@@ -1286,6 +1132,7 @@ app.get('/robots.txt', (req, res) => {
     'User-agent: *',
     'Allow: /',
     'Disallow: /studio/',
+    'Disallow: /admin',
     'Disallow: /api/',
     `Sitemap: ${origin}/sitemap.xml`
   ].join('\n'));
@@ -1301,7 +1148,7 @@ app.get('/sitemap.xml', async (req, res) => {
     const origin = getSiteOrigin(req);
     const dates = await getSitemapDates(podcast);
     const entries = [
-      getSitemapUrl({
+      ...(store.settings().seo?.noindex ? [] : [getSitemapUrl({
         location: origin,
         lastModified: dates.home,
         priority: '1.0',
@@ -1309,15 +1156,20 @@ app.get('/sitemap.xml', async (req, res) => {
         image: getAbsoluteUrl(origin, '/assets/anchev-films-social.jpg'),
         imageTitle: `${SITE_NAME} film production in Athens`
       }),
-      getSitemapUrl({
+      getSitemapUrl({ location: `${origin}/el/`, lastModified: dates.home, priority: '1.0', changeFrequency: 'weekly', alternates: ['en','el','x-default'].map((language) => ({ language, url: `${origin}${language === 'el' ? '/el/' : '/'}` })) })]),
+      ...(store.page('studio', 'en', true)?.seo?.noindex ? [] : [getSitemapUrl({
         location: getAbsoluteUrl(origin, '/studio'),
         lastModified: dates.home,
         priority: '0.8',
         changeFrequency: 'monthly',
         image: getAbsoluteUrl(origin, '/media/experience/studio-poster.jpg'),
         imageTitle: 'Anchev Studio production space'
-      }),
+      })]),
       ...[...servicePages.flatMap((page) => ['en', 'el'].map((language) => getServicePath(page, language))), '/el/studio']
+        .filter((pathname) => {
+          const service = getServicePage(pathname);
+          return !store.page(service.isStudio ? 'studio' : `service-${service.slug}`, pathname.startsWith('/el/') ? 'el' : 'en', true)?.seo?.noindex;
+        })
         .map((pathname) => getSitemapUrl({ location: getAbsoluteUrl(origin, pathname), lastModified: dates.home, priority: '0.8', changeFrequency: 'monthly' })),
       ...(podcast?.episodes || []).map((episode) => getSitemapUrl({
         location: getAbsoluteUrl(origin, getPodcastEpisodePath(episode)),
@@ -1326,19 +1178,24 @@ app.get('/sitemap.xml', async (req, res) => {
       })),
       ...projects
         .filter((project) => project.id)
-        .map((project) => getSitemapUrl({
-          location: getAbsoluteUrl(origin, `/work/${encodeURIComponent(project.id)}`),
+        .flatMap((project) => {
+          const languages = (project.hasGreek ? ['en', 'el'] : ['en']).filter((locale) => !store.project(project.id, { publicOnly: true, locale })?.seo?.noindex);
+          return languages.map((language) => getSitemapUrl({
+          location: getAbsoluteUrl(origin, `${language === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`),
           lastModified: dates.projects,
           priority: '0.8',
           changeFrequency: 'monthly',
           image: getAbsoluteUrl(origin, project.thumbnail),
-          imageTitle: project.name
-        }))
+          imageTitle: project.name,
+          alternates: languages.length > 1 ? ['en','el','x-default'].map((locale) => ({ language: locale, url: `${origin}${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}` })) : []
+          }));
+        }),
+      ...store.db.prepare('SELECT id,locale,published,updated_at FROM pages WHERE published IS NOT NULL').all().filter((page) => !JSON.parse(page.published).seo?.noindex && !getSiteContentPath(page.id, page.locale)).map((page) => getSitemapUrl({ location: `${origin}${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, lastModified: page.updated_at.slice(0,10), priority: '0.6', changeFrequency: 'monthly' }))
     ];
     res.setHeader('Cache-Control', 'no-store');
     res.type('application/xml').send([
       '<?xml version="1.0" encoding="UTF-8"?>',
-      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
       ...entries,
       '</urlset>'
     ].join('\n'));
@@ -1347,15 +1204,60 @@ app.get('/sitemap.xml', async (req, res) => {
   }
 });
 
-app.get(/^\/work\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+app.get(/^\/(?:el\/)?(?:work|pages)\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
 app.get(/^\/podcast\/[^/]+\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
 app.get(/^\/(?:el\/)?(?:services\/[^/]+|studio)\/$/, (req, res) => res.redirect(301, `${req.path.slice(0, -1)}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
-app.get(['/', '/index.html', '/work/:id', '/studio', '/services/:slug', '/el/services/:slug', '/el/studio'], renderSeoPage);
+app.get(/^\/en(?:\/.*)?$/, (req, res) => res.redirect(301, `${req.path.replace(/^\/en/, '') || '/'}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+app.get(/^\/el$/, (req, res) => res.redirect(301, `/el/${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+app.use((req, res, next) => {
+  if (!['GET','HEAD'].includes(req.method)) return next();
+  const redirect = store.db.prepare('SELECT target FROM redirects WHERE source=?').get(req.path);
+  if (redirect) return res.redirect(301, `${redirect.target}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`);
+  next();
+});
+app.get(['/pages/:id', '/el/pages/:id'], (req, res, next) => {
+  const locale = req.path.startsWith('/el/') ? 'el' : 'en';
+  const canonical = getSiteContentPath(req.params.id, locale);
+  if (!canonical || !store.page(req.params.id, locale, true)) return next();
+  res.redirect(301, `${canonical}${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}${req.params.id === 'contact' ? '#contact-page' : ''}`);
+});
+app.get(['/', '/index.html', '/el/', '/work/:id', '/el/work/:id', '/studio', '/services/:slug', '/el/services/:slug', '/el/studio', '/pages/:id', '/el/pages/:id', '/privacy', '/el/privacy'], renderSeoPage);
 app.get(['/project', '/project.html'], (_req, res) => res.redirect(301, '/'));
+app.get('/vendor/lucide.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules', 'lucide', 'dist', 'umd', 'lucide.min.js')));
+for (const font of ['manrope', 'bodoni-moda', 'gfs-didot']) {
+  app.use(`/fonts/${font}`, express.static(path.join(__dirname, 'node_modules', '@fontsource' + (font === 'gfs-didot' ? '' : '-variable'), font, 'files'), { dotfiles: 'deny', index: false, maxAge: '7d' }));
+}
+app.get(['/admin', '/admin.html'], (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Robots-Tag', 'noindex,nofollow,noarchive');
+  res.sendFile(path.join(publicDir, 'admin.html'));
+});
+app.get('/studio/anchev', (_req, res) => res.redirect(301, '/admin'));
+app.use('/uploads', (req, res, next) => {
+  if (media.isQuarantined(`/uploads${req.path}`)) return res.status(503).set('Cache-Control', 'no-store').send('This media is temporarily unavailable.');
+  next();
+}, express.static(uploadsDir, { dotfiles: 'deny', fallthrough: false, maxAge: 0 }));
 app.use(servePublicFiles);
 
 app.get('*', renderSeoPage);
 
-app.listen(port, () => {
-  console.log(`Anchev Films is running at http://localhost:${port}`);
+app.use((error, _req, res, _next) => {
+  if (res.headersSent) return _next(error);
+  const status = error instanceof ZodError ? 400 : error.code === 'LIMIT_FILE_SIZE' ? 413 : error.code?.startsWith('SQLITE_CONSTRAINT') ? 409 : error.status || 500;
+  const requestId = crypto.randomUUID();
+  if (status >= 500) console.error(JSON.stringify({ event: 'request.error', requestId, code: error.code || error.name }));
+  const message = error instanceof ZodError ? error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') : status === 413 ? 'File or request is too large.' : status === 409 ? error.code ? 'This record conflicts with an existing entry.' : error.message : status < 500 ? error.message : 'The request could not be completed.';
+  res.status(status).json({ error: message, requestId });
 });
+
+const listener = app.listen(port, process.env.HOST || '127.0.0.1', () => {
+  const actualPort = listener.address().port;
+  console.log(`Anchev Films is running at http://localhost:${actualPort}`);
+  process.send?.({ port: actualPort });
+});
+const shutdown = async () => {
+  await media.stop();
+  listener.close(() => { store.close(); process.exit(0); });
+};
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

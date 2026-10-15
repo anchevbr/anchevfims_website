@@ -100,6 +100,7 @@ const trackContactIntent = (anchor) => {
 };
 
 export const setupAnalytics = () => {
+  if (document.documentElement.hasAttribute('data-settings-preview')) return;
   const banner = document.getElementById('consent-banner');
   const preferences = document.getElementById('consent-preferences');
   const analyticsToggle = document.getElementById('consent-analytics');

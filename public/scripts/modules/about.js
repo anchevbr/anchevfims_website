@@ -228,8 +228,9 @@ const setupAboutRoute = (root) => {
 
 export const renderAbout = () => {
   const root = document.getElementById('about-page-content');
+  if (!root) return;
   root._aboutCleanup?.();
-  root.innerHTML = `
+  if (!root.childElementCount) root.innerHTML = `
     <div class="about-production-field" aria-hidden="true">
       <svg class="about-production-field-svg" viewBox="0 0 1 1" preserveAspectRatio="none">
         <g class="about-production-grid"></g>

@@ -9,11 +9,16 @@ const soundToggle = document.getElementById('sound-toggle');
 const heroMedia = document.getElementById('hero-media');
 const ambienceStorageKey = 'anchev-ambience-enabled';
 let heroVideo = null;
-let youtubePlayer = null;
-let youtubePlayerReady = false;
-let youtubeApiPromise = null;
-let heroPlayerVersion = 0;
 let currentHeroSource = '';
+let heroPlaybackRequested = false;
+
+const addHeroAction = (trigger) => {
+  const reel = document.querySelector('.hero-copy [data-open-reel]');
+  if (!reel) return;
+  let actions = reel.closest('.hero-actions');
+  if (!actions) { actions = document.createElement('div'); actions.className = 'hero-actions'; reel.before(actions); actions.append(reel); }
+  actions.append(trigger);
+};
 
 const getResponsiveHeroSource = () => {
   const primarySource = String(siteContent.media.videoSource || '').trim();
@@ -58,12 +63,16 @@ const createNativeHeroVideo = (source) => {
   const video = document.createElement('video');
   video.id = 'hero-video';
   video.className = 'hero-video';
-  video.autoplay = true;
+  video.autoplay = heroPlaybackRequested;
   video.muted = true;
   video.loop = true;
   video.playsInline = true;
-  video.preload = 'metadata';
-  video.src = source;
+  video.preload = 'none';
+  video.dataset.src = source;
+  if (heroMedia.dataset.poster) video.poster = heroMedia.dataset.poster;
+  if (video.autoplay) video.src = source;
+  video.addEventListener('playing', () => heroMedia.parentElement.classList.add('is-playing'));
+  video.addEventListener('error', () => heroMedia.parentElement.classList.remove('is-playing'));
   return video;
 };
 
@@ -91,14 +100,6 @@ const applyYouTubeIframeAttributes = (iframe) => {
   iframe.setAttribute('aria-hidden', 'true');
 };
 
-const createYouTubePlayerHost = () => {
-  const playerHost = document.createElement('div');
-  playerHost.id = 'hero-video';
-  playerHost.className = 'hero-video is-youtube';
-  playerHost.setAttribute('aria-hidden', 'true');
-  return playerHost;
-};
-
 const createYouTubeFallback = (videoId) => {
   const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
   Object.entries(getYouTubePlayerVars(videoId)).forEach(([key, value]) => {
@@ -112,47 +113,19 @@ const createYouTubeFallback = (videoId) => {
   return iframe;
 };
 
-const loadYouTubeApi = () => {
-  if (window.YT?.Player) return Promise.resolve(window.YT);
-  if (youtubeApiPromise) return youtubeApiPromise;
-
-  youtubeApiPromise = new Promise((resolve, reject) => {
-    const previousOnReady = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => {
-      previousOnReady?.();
-      resolve(window.YT);
-    };
-
-    const script = document.createElement('script');
-    script.src = 'https://www.youtube.com/iframe_api';
-    script.async = true;
-    script.addEventListener('error', () => {
-      youtubeApiPromise = null;
-      reject(new Error('Unable to load the YouTube player API.'));
-    }, { once: true });
-    document.head.append(script);
-  });
-
-  return youtubeApiPromise;
-};
-
 const updateHeroPlayback = () => {
   if (!heroVideo) return;
 
-  if (youtubePlayer && youtubePlayerReady) {
-    if (body.classList.contains('reduced-motion')) {
-      youtubePlayer.pauseVideo();
-    } else {
-      youtubePlayer.mute();
-      youtubePlayer.playVideo();
-    }
+  if (heroVideo instanceof HTMLIFrameElement) {
+    if (body.classList.contains('reduced-motion') || document.hidden) heroVideo.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), 'https://www.youtube-nocookie.com');
     return;
   }
 
   if (heroVideo instanceof HTMLVideoElement) {
-    if (body.classList.contains('reduced-motion')) {
+    if (!heroPlaybackRequested || document.hidden) {
       heroVideo.pause();
     } else {
+      if (!heroVideo.getAttribute('src') && heroVideo.dataset.src) heroVideo.src = heroVideo.dataset.src;
       heroVideo.play().catch(() => undefined);
     }
     return;
@@ -173,49 +146,41 @@ export const setVideoSource = () => {
   if (!source || !heroMedia) return;
 
   currentHeroSource = source;
-  heroPlayerVersion += 1;
-  const playerVersion = heroPlayerVersion;
-  if (youtubePlayer) youtubePlayer.destroy();
-  youtubePlayer = null;
-  youtubePlayerReady = false;
+  document.getElementById('hero-youtube-load')?.remove();
+  document.getElementById('hero-background-toggle')?.remove();
+  heroMedia.parentElement.classList.remove('is-playing');
 
   const youtubeVideoId = getYouTubeVideoId(source);
   if (youtubeVideoId) {
-    const playerHost = createYouTubePlayerHost();
-    heroVideo = playerHost;
-    heroMedia.replaceChildren(playerHost);
-
-    loadYouTubeApi()
-      .then((YT) => {
-        if (playerVersion !== heroPlayerVersion || !heroMedia.contains(playerHost)) return;
-
-        youtubePlayer = new YT.Player(playerHost, {
-          videoId: youtubeVideoId,
-          playerVars: getYouTubePlayerVars(youtubeVideoId),
-          events: {
-            onReady: (event) => {
-              if (playerVersion !== heroPlayerVersion) {
-                event.target.destroy();
-                return;
-              }
-              heroVideo = event.target.getIframe();
-              applyYouTubeIframeAttributes(heroVideo);
-              youtubePlayerReady = true;
-              updateHeroPlayback();
-            }
-          }
-        });
-      })
-      .catch(() => {
-        if (playerVersion !== heroPlayerVersion) return;
-        heroVideo = createYouTubeFallback(youtubeVideoId);
-        heroMedia.replaceChildren(heroVideo);
-      });
+    heroVideo = null;
+    heroMedia.replaceChildren();
+    const trigger = document.createElement('button');
+    trigger.id = 'hero-youtube-load';
+    trigger.className = 'hero-youtube-load';
+    trigger.type = 'button';
+    trigger.textContent = document.documentElement.lang === 'el' ? 'Αναπαραγωγή φόντου YouTube' : 'Play YouTube background';
+    trigger.addEventListener('click', () => {
+      heroVideo = createYouTubeFallback(youtubeVideoId);
+      heroMedia.replaceChildren(heroVideo);
+      trigger.remove();
+    }, { once: true });
+    addHeroAction(trigger);
     return;
   }
 
+  heroPlaybackRequested = !window.matchMedia('(max-width: 820px)').matches && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && !navigator.connection?.saveData;
   heroVideo = createNativeHeroVideo(source);
   heroMedia.replaceChildren(heroVideo);
+  const toggle = document.createElement('button');
+  toggle.id = 'hero-background-toggle';
+  toggle.className = 'hero-youtube-load';
+  toggle.type = 'button';
+  const label = () => {
+    toggle.textContent = document.documentElement.lang === 'el' ? heroPlaybackRequested ? 'Παύση φόντου' : 'Αναπαραγωγή φόντου' : heroPlaybackRequested ? 'Pause background' : 'Play background';
+    toggle.setAttribute('aria-pressed', String(heroPlaybackRequested));
+  };
+  toggle.addEventListener('click', () => { heroPlaybackRequested = !heroPlaybackRequested; label(); updateHeroPlayback(); });
+  label(); addHeroAction(toggle);
   updateHeroPlayback();
 };
 
@@ -259,6 +224,12 @@ export const setupMotionPreferences = () => {
   const applyReduced = () => {
     if (media.matches) {
       body.classList.add('reduced-motion');
+      heroPlaybackRequested = false;
+      const toggle = document.getElementById('hero-background-toggle');
+      if (toggle) {
+        toggle.setAttribute('aria-pressed', 'false');
+        toggle.textContent = document.documentElement.lang === 'el' ? 'Αναπαραγωγή φόντου' : 'Play background';
+      }
     } else {
       body.classList.remove('reduced-motion');
     }

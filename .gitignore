@@ -5,3 +5,11 @@ npm-debug.log*
 .env.*
 !.env.example
 public/media/experience/anchev_studio_v1.mp4
+data/*.sqlite*
+data/backups/
+data/incoming/
+data/reports/
+public/uploads/
+playwright-report/
+test-results/
+artifacts/

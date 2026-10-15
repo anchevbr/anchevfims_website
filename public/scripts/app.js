@@ -8,10 +8,11 @@ import { renderPodcast } from '/scripts/modules/podcast.js';
 import { setupFilmExperience } from '/scripts/modules/experience.js?v=20261010-studio-page';
 import { openProjectFromLocation, renderProjectBrowser } from '/scripts/modules/projects.js?v=20261010-project';
 import { setVideoSource, bindEvents, openPanel, setupMotionPreferences, setupOptionalAudio, animateIn } from '/scripts/modules/ui.js?v=20261010-navigation-motion';
-import { openAdminOverlay } from '/scripts/modules/admin.js?v=20261010-project';
 import { siteContent } from '/scripts/content.js';
+import { setupLanguagePreference } from '/scripts/modules/language.js';
 
 setupAnalytics();
+setupLanguagePreference();
 
 const applySettings = (s) => {
   if (s.videoSource) siteContent.media.videoSource = s.videoSource;
@@ -23,12 +24,21 @@ const applySettings = (s) => {
 
 const init = async () => {
   try {
-    const res = await fetch('/api/settings');
-    if (res.ok) applySettings(await res.json());
+    const settings = document.getElementById('public-settings');
+    if (settings) applySettings(JSON.parse(settings.textContent));
+    else {
+      const res = await fetch('/api/settings');
+      if (res.ok) applySettings(await res.json());
+    }
   } catch (_) {}
 
   setVideoSource();
   renderAbout();
+  bindEvents();
+  setupMotionPreferences();
+  setupOptionalAudio();
+  setupFilmExperience();
+  animateIn();
   await renderClients();
   renderPodcast();
   await renderArticles();
@@ -37,19 +47,10 @@ const init = async () => {
   renderLegalPanel('privacy');
   renderLegalPanel('cookies');
   renderLegalPanel('terms');
-  bindEvents();
   if (window.location.hash === '#panel-cookies') openPanel('cookies');
-  setupMotionPreferences();
-  setupOptionalAudio();
-  setupFilmExperience();
-  animateIn();
   await openProjectFromLocation();
 
-  if (window.location.pathname === '/studio/anchev') {
-    openAdminOverlay();
-  }
-
-  document.getElementById('footer-admin-btn').addEventListener('click', openAdminOverlay);
+  document.getElementById('footer-admin-btn')?.addEventListener('click', () => { window.location.assign('/admin'); });
 };
 
 init();

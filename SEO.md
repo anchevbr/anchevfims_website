@@ -28,7 +28,7 @@ The check reads the live sitemap and verifies initial HTML, metadata, language p
 
 ## Admin And Deployment Configuration
 
-Set `ADMIN_SECRET_HASH` to the SHA-256 hex digest of the admin password in the server's environment before starting Node or PM2. Admin access is denied when this variable is unset; no credential hash is stored in the repository. `npm run deploy` requires this variable in the remote non-interactive SSH environment before syncing files. Local `.env` files are ignored by Git and are not automatically loaded by the application.
+The platform feature branch replaces shared-secret authentication with named users, session cookies, backend permissions, CSRF and optional MFA. Configure private `SESSION_SECRET`, `MFA_ENCRYPTION_KEY`, HTTPS `SITE_URL` and persistent storage; use `npm run admin:create` for the first owner. Local environment files are ignored by Git and loaded explicitly by the documented Node commands. Release preparation and activation are separately approval-gated; see [PLATFORM.md](PLATFORM.md). This branch has not been deployed, and the earlier live release notes below do not certify it.
 
 The oversized original `public/media/experience/anchev_studio_v1.mp4` is excluded from Git. The optimized studio videos remain included.
 
