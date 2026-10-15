@@ -1,7 +1,8 @@
 import { load } from 'cheerio';
 import { escapeHtml, renderContactPageMarkup } from '../public/scripts/modules/content-markup.js';
-import { copy } from '../public/scripts/modules/localization.js';
+import { copy, homepageFields } from '../public/scripts/modules/localization.js';
 import { servicePages } from '../public/scripts/modules/service-pages.js';
+import { renderLegalPanelMarkup } from '../public/scripts/modules/legal.js';
 
 const greekHome = {
   '.hero-kicker': 'Κινηματογραφική παραγωγή / Αθήνα',
@@ -137,6 +138,20 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
         if (!current?.hasGreek) $(element).attr('lang', 'en');
       });
       $('#contact-page-content').html(renderContactPageMarkup({ ...store.settings().contact, social: store.settings().social }, 'el'));
+    }
+    for (const key of ['privacy', 'cookies', 'terms']) {
+      const managed = key !== 'privacy' && store.page(key, language, true);
+      if (key === 'privacy' || managed) {
+        const href = `${language === 'el' ? '/el' : ''}${key === 'privacy' ? '/privacy' : `/pages/${key}`}`;
+        $(`[data-open-panel="${key}"]`).each((_index, element) => {
+          const button = $(element);
+          button.replaceWith(`<a class="${escapeHtml(button.attr('class') || '')}" href="${href}">${escapeHtml(button.text())}</a>`);
+        });
+      } else $(`#panel-content-${key}`).html(renderLegalPanelMarkup(key, language));
+    }
+    for (const field of homepageFields) {
+      const value = contentSettings.homepage?.[language]?.[field.key];
+      if (typeof value === 'string' && value.trim()) $(field.selector).html(escapeHtml(value).replace(/\n/g, '<br />')).removeAttr('lang');
     }
     const about = store.page('about', language, true);
     if (about?.heading) {

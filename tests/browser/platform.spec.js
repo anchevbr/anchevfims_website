@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { load } from 'cheerio';
 
 test('public locales fit and optional tracking stays off until consent', async ({ page }, testInfo) => {
   const errors = [];
@@ -71,6 +72,45 @@ test('reduced motion gets a server-rendered real-film poster without downloading
   await expect(page.locator('#hero-video')).toHaveAttribute('preload', 'none');
   await expect(page.locator('#hero-video')).not.toHaveAttribute('src');
   expect(videoRequests).toEqual([]);
+});
+
+test('Greek legal controls show localized cookies and navigate to the canonical privacy notice', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/el/');
+  await page.locator('#hero-video').waitFor({ state: 'attached' });
+  await page.locator('.consent-banner__policy').click();
+  await expect(page.locator('#panel-cookies').getByRole('heading', { name: 'Απαραίτητη αποθήκευση', exact: true })).toBeVisible();
+  await page.locator('#panel-cookies .panel-close').click();
+  await page.locator('[data-consent-reject]').click();
+  await page.locator('a.legal-link[href="/el/privacy"]').click();
+  await expect(page).toHaveURL(/\/el\/privacy$/);
+  await expect(page.getByRole('heading', { name: 'Πολιτική απορρήτου', exact: true })).toBeVisible();
+});
+
+test('custom YouTube hero makes no third-party request until explicitly played', async ({ page }) => {
+  const requests = [];
+  await page.route('**/', async (route) => {
+    const response = await route.fetch();
+    const $ = load(await response.text());
+    const settings = JSON.parse($('#public-settings').text());
+    settings.videoSource = 'https://youtu.be/lINECZrijtg';
+    settings.mobileVideoSource = settings.videoSource;
+    $('#public-settings').text(JSON.stringify(settings));
+    await route.fulfill({ response, body: $.html() });
+  });
+  await page.route(/https:\/\/(?:www\.)?(?:youtube(?:-nocookie)?\.com|ytimg\.com)\//, async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Controlled embed response</title>' });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Play YouTube background', exact: true })).toBeVisible();
+  expect(requests).toEqual([]);
+  await expect(page.locator('#hero-media iframe')).toHaveCount(0);
+  await page.locator('[data-consent-reject]').click();
+  await page.getByRole('button', { name: 'Play YouTube background', exact: true }).click();
+  await expect(page.locator('#hero-media iframe')).toHaveAttribute('src', /^https:\/\/www\.youtube-nocookie\.com\/embed\/lINECZrijtg\?/);
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests.some((url) => url.includes('iframe_api'))).toBe(false);
 });
 
 const signIn = async (page) => {
@@ -145,6 +185,11 @@ test('gallery and structured credits preserve the edited order', async ({ page }
   const id = `ordered-${testInfo.project.name}-${Date.now()}`;
   await page.getByLabel('Project title', { exact: true }).fill('Ordered production');
   await page.getByLabel('URL identifier', { exact: true }).fill(id);
+  await page.getByRole('tab', { name: 'Greek', exact: true }).click();
+  await page.getByLabel('Greek title', { exact: true }).fill('Greek production');
+  await page.getByLabel('Greek short description', { exact: true }).fill('Greek description');
+  await page.getByLabel('Greek social image', { exact: true }).fill('/assets/anchevlogo.png');
+  await page.getByLabel('Exclude Greek project from search indexing', { exact: true }).check();
   await page.getByRole('tab', { name: 'Production', exact: true }).click();
   for (const suffix of ['first', 'second']) {
     await page.getByRole('button', { name: 'Add image', exact: true }).click();
@@ -163,5 +208,49 @@ test('gallery and structured credits preserve the edited order', async ({ page }
   const project = data.projects.find((entry) => entry.id === id);
   expect(project.frames.map((url) => url.split('?')[1])).toEqual(['second', 'first']);
   expect(project.credits.map((credit) => credit.name)).toEqual(['Second person', 'First person']);
+  expect(project.translations.el.seo.image).toBe('/assets/anchevlogo.png');
+  expect(project.translations.el.seo.noindex).toBe(true);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.locator(`[data-edit-project="${id}"]`).first().click();
+  await page.getByRole('tab', { name: 'Greek', exact: true }).click();
+  await expect(page.getByLabel('Greek social image', { exact: true })).toHaveValue('/assets/anchevlogo.png');
+  await expect(page.getByLabel('Exclude Greek project from search indexing', { exact: true })).toBeChecked();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('homepage copy and SEO settings save through the console in both locales', async ({ page }, testInfo) => {
+  await signIn(page);
+  const original = await (await page.request.get('/api/admin/settings')).json();
+  const { csrf } = await (await page.request.get('/api/admin/session')).json();
+  try {
+    const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
+    if (await menu.isVisible()) await menu.click();
+    await page.getByRole('link', { name: 'Settings', exact: true }).click();
+    await page.getByLabel('Homepage social image', { exact: true }).fill('/assets/anchevlogo.png');
+    await page.getByLabel('Exclude homepage from search indexing', { exact: true }).check();
+    for (const language of ['en', 'el']) {
+      await page.getByRole('tab', { name: `Homepage / ${language.toUpperCase()}`, exact: true }).click();
+      await page.locator(`#panel-home-${language}`).getByLabel('Opening introduction', { exact: true }).fill(`${language} opening ${testInfo.project.name}`);
+      await page.locator(`#panel-home-${language}`).getByLabel('Services introduction', { exact: true }).fill(`${language} services ${testInfo.project.name}`);
+    }
+    await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+    await expect(page.locator('[role="status"]').filter({ hasText: 'Settings saved.' })).toBeVisible();
+    await page.reload();
+    await page.getByRole('tab', { name: 'Business', exact: true }).waitFor();
+    await expect(page.getByLabel('Homepage social image', { exact: true })).toHaveValue('/assets/anchevlogo.png');
+    await expect(page.getByLabel('Exclude homepage from search indexing', { exact: true })).toBeChecked();
+    const publicPage = await page.context().newPage();
+    for (const language of ['en', 'el']) {
+      await publicPage.goto(language === 'en' ? '/' : '/el/');
+      await publicPage.locator('#hero-video').waitFor({ state: 'attached' });
+      await expect(publicPage.locator('.hero-positioning')).toHaveText(`${language} opening ${testInfo.project.name}`);
+      await expect(publicPage.locator('#services-page .experience-heading > p:last-child')).toHaveText(`${language} services ${testInfo.project.name}`);
+      await expect(publicPage.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,follow');
+      expect(await publicPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await publicPage.close();
+  } finally {
+    const response = await page.request.post('/api/admin/settings', { headers: { 'x-csrf-token': csrf, origin: new URL(page.url()).origin }, data: { ...original, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } } });
+    expect(response.status()).toBe(200);
+  }
 });

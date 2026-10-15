@@ -762,6 +762,7 @@ const getSeoPage = async (req) => {
 
   const description = language === 'el' ? 'Η Anchev Films είναι εταιρεία κινηματογραφικής παραγωγής στην Αθήνα. Διαφημιστικά, εταιρικές ταινίες, γυρίσματα, στούντιο και post-production.' : settings.seo?.description || getHomeDescription(podcast);
   const homeCanonical = getAbsoluteUrl(origin, language === 'el' ? '/el/' : '/');
+  const homeImage = settings.seo?.image ? getAbsoluteUrl(origin, settings.seo.image) : defaultImage;
   return {
     status: isHomeRoute || isAdminRoute ? 200 : 404,
     title: language === 'el' ? `${SITE_NAME} | Κινηματογραφική παραγωγή στην Αθήνα` : settings.seo?.title || `${SITE_NAME} | Film Production Company in Athens`,
@@ -769,19 +770,19 @@ const getSeoPage = async (req) => {
     canonical: homeCanonical,
     language,
     alternates: isHomeRoute ? ['en', 'el', 'x-default'].map((locale) => ({ language: locale, url: getAbsoluteUrl(origin, locale === 'el' ? '/el/' : '/') })) : [],
-    image: defaultImage,
+    image: homeImage,
     imageAlt: `${SITE_NAME}, film production in Athens`,
-    imageType: 'image/jpeg',
-    imageWidth: 1200,
-    imageHeight: 630,
+    imageType: getImageMimeType(homeImage),
+    imageWidth: settings.seo?.image ? null : 1200,
+    imageHeight: settings.seo?.image ? null : 630,
     ogType: 'website',
     robots: isAdminRoute || !isHomeRoute
       ? 'noindex,nofollow,noarchive'
-      : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+      : settings.seo?.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
     schema: getHomeSchema({
       origin,
       description,
-      image: defaultImage,
+      image: homeImage,
       logo,
       settings,
       clients,
@@ -1098,7 +1099,7 @@ app.get('/sitemap.xml', async (req, res) => {
     const origin = getSiteOrigin(req);
     const dates = await getSitemapDates(podcast);
     const entries = [
-      getSitemapUrl({
+      ...(store.settings().seo?.noindex ? [] : [getSitemapUrl({
         location: origin,
         lastModified: dates.home,
         priority: '1.0',
@@ -1106,7 +1107,7 @@ app.get('/sitemap.xml', async (req, res) => {
         image: getAbsoluteUrl(origin, '/assets/anchev-films-social.jpg'),
         imageTitle: `${SITE_NAME} film production in Athens`
       }),
-      getSitemapUrl({ location: `${origin}/el/`, lastModified: dates.home, priority: '1.0', changeFrequency: 'weekly', alternates: ['en','el','x-default'].map((language) => ({ language, url: `${origin}${language === 'el' ? '/el/' : '/'}` })) }),
+      getSitemapUrl({ location: `${origin}/el/`, lastModified: dates.home, priority: '1.0', changeFrequency: 'weekly', alternates: ['en','el','x-default'].map((language) => ({ language, url: `${origin}${language === 'el' ? '/el/' : '/'}` })) })]),
       getSitemapUrl({
         location: getAbsoluteUrl(origin, '/studio'),
         lastModified: dates.home,
@@ -1123,16 +1124,19 @@ app.get('/sitemap.xml', async (req, res) => {
         image: episode.image || podcast.cover, imageTitle: episode.title
       })),
       ...projects
-        .filter((project) => project.id && !project.seo?.noindex)
-        .flatMap((project) => (project.hasGreek ? ['en','el'] : ['en']).map((language) => getSitemapUrl({
+        .filter((project) => project.id)
+        .flatMap((project) => {
+          const languages = (project.hasGreek ? ['en', 'el'] : ['en']).filter((locale) => !store.project(project.id, { publicOnly: true, locale })?.seo?.noindex);
+          return languages.map((language) => getSitemapUrl({
           location: getAbsoluteUrl(origin, `${language === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}`),
           lastModified: dates.projects,
           priority: '0.8',
           changeFrequency: 'monthly',
           image: getAbsoluteUrl(origin, project.thumbnail),
           imageTitle: project.name,
-          alternates: project.hasGreek ? ['en','el','x-default'].map((locale) => ({ language: locale, url: `${origin}${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}` })) : []
-        }))),
+          alternates: languages.length > 1 ? ['en','el','x-default'].map((locale) => ({ language: locale, url: `${origin}${locale === 'el' ? '/el' : ''}/work/${encodeURIComponent(project.id)}` })) : []
+          }));
+        }),
       ...store.db.prepare('SELECT id,locale,published,updated_at FROM pages WHERE published IS NOT NULL').all().filter((page) => !JSON.parse(page.published).seo?.noindex).map((page) => getSitemapUrl({ location: `${origin}${page.locale === 'el' ? '/el' : ''}/pages/${page.id}`, lastModified: page.updated_at.slice(0,10), priority: '0.6', changeFrequency: 'monthly' }))
     ];
     res.setHeader('Cache-Control', 'no-store');

@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { asyncRoute, createUser, hashPassword, publicUser, requirePermission, userSchema } from './auth.js';
 import { assetUrl, externalUrl, text, slug, can, safeUrl } from './security.js';
+import { homepageFields } from '../public/scripts/modules/localization.js';
 
 const shortText = z.string().trim().max(250);
 export const seoSchema = z.object({
@@ -33,11 +34,13 @@ const pageSchema = z.object({
   blocks: z.array(z.object({ type: z.enum(['text', 'image', 'video', 'link']), title: shortText.default(''), text: text.default(''), url: assetUrl.default(''), alt: shortText.default('') })).max(50).default([]),
   seo: seoSchema
 });
+const homepageCopySchema = z.object(Object.fromEntries(homepageFields.map((field) => [field.key, z.string().trim().max(field.area ? 2000 : 250).optional()])));
 export const settingsSchema = z.object({
   videoSource: assetUrl, mobileVideoSource: assetUrl, showreelSource: assetUrl,
   contact: z.object({ email: z.email().max(254), phone: z.string().max(60), location: shortText }),
   social: z.array(z.object({ label: shortText.min(1), href: externalUrl })).max(20),
-  seo: seoSchema.optional()
+  seo: seoSchema.optional(),
+  homepage: z.object({ en: homepageCopySchema.optional(), el: homepageCopySchema.optional() }).optional()
 });
 const articleSchema = z.object({ id: slug, title: shortText.min(1), publisher: shortText, publishedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), url: externalUrl.refine(Boolean), summary: text, language: z.enum(['en', 'el']) });
 

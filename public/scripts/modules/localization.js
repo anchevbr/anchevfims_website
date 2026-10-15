@@ -1,5 +1,24 @@
 export const locale = () => typeof document !== 'undefined' && document.documentElement.lang === 'el' ? 'el' : 'en';
 
+export const homepageFields = [
+  { key: 'heroKicker', label: 'Opening label', selector: '.hero-kicker' },
+  { key: 'heroPositioning', label: 'Opening introduction', selector: '.hero-positioning', area: true },
+  ...['Direction', 'Production', 'Film'].flatMap((label, index) => [
+    { key: `story${index}Label`, label: `${label} label`, selector: `[data-story-scene="${index}"] .story-scene-number` },
+    { key: `story${index}Heading`, label: `${label} heading`, selector: `[data-story-scene="${index}"] h2` },
+    { key: `story${index}Body`, label: `${label} introduction`, selector: `[data-story-scene="${index}"] > p:last-child`, area: true }
+  ]),
+  { key: 'workHeading', label: 'Selected work heading', selector: '#work-title' },
+  { key: 'workIntro', label: 'Selected work introduction', selector: '#work-page .experience-heading > p:last-child', area: true },
+  { key: 'studioHeading', label: 'Studio heading', selector: '#studio-feature-title' },
+  { key: 'servicesHeading', label: 'Services heading', selector: '#services-title' },
+  { key: 'servicesIntro', label: 'Services introduction', selector: '#services-page .experience-heading > p:last-child', area: true },
+  { key: 'clientsHeading', label: 'Clients heading', selector: '#clients-title' },
+  { key: 'podcastHeading', label: 'Podcast heading', selector: '#podcast-title' },
+  { key: 'articlesHeading', label: 'Articles heading', selector: '#articles-title' },
+  { key: 'articlesIntro', label: 'Articles introduction', selector: '.articles-heading > div > p', area: true }
+];
+
 const dictionaries = {
   en: {
     start: 'Start a project / Athens to worldwide', contactTitle: "Have something in mind? Let's make it.",

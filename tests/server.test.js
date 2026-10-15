@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ContentStore } from '../src/database.js';
 import { createUser } from '../src/auth.js';
+import { load } from 'cheerio';
 
 let directory;
 let child;
@@ -14,6 +15,30 @@ let origin;
 let cookie;
 let csrf;
 const password = 'test-only-server-password';
+
+test('homepage settings control localized copy, social metadata and indexing without affecting inner pages', async () => {
+  const headers = { cookie, origin, 'x-csrf-token': csrf, 'content-type': 'application/json' };
+  const original = await (await fetch(`${origin}/api/admin/settings`, { headers: { cookie } })).json();
+  try {
+    const response = await fetch(`${origin}/api/admin/settings`, { method: 'POST', headers, body: JSON.stringify({ ...original, homepage: { en: { heroPositioning: 'Custom English positioning' }, el: { heroPositioning: 'Custom Greek positioning' } }, seo: { title: 'Custom homepage title', description: 'A custom homepage description.', image: '/assets/anchevlogo.png', noindex: true } }) });
+    assert.equal(response.status, 200);
+    for (const [route, text] of [['/', 'Custom English positioning'], ['/el/', 'Custom Greek positioning']]) {
+      const $ = load(await (await fetch(`${origin}${route}`)).text());
+      assert.equal($('.hero-positioning').text(), text);
+      assert.equal($('meta[name="robots"]').attr('content'), 'noindex,follow');
+      assert.equal($('meta[property="og:image"]').attr('content'), `${origin}/assets/anchevlogo.png`);
+      assert.equal($('meta[property="og:image:width"]').length, 0);
+    }
+    const sitemap = load(await (await fetch(`${origin}/sitemap.xml`)).text(), { xml: true });
+    const locations = sitemap('url > loc').map((_index, entry) => sitemap(entry).text()).get();
+    assert.equal(locations.includes(origin), false);
+    assert.equal(locations.includes(`${origin}/el/`), false);
+    assert.ok(locations.includes(`${origin}/studio`));
+  } finally {
+    const response = await fetch(`${origin}/api/admin/settings`, { method: 'POST', headers, body: JSON.stringify({ ...original, homepage: original.homepage || {}, seo: original.seo || { title: '', description: '', image: '', noindex: false } }) });
+    assert.equal(response.status, 200);
+  }
+});
 
 before(async () => {
   directory = await mkdtemp(path.join(tmpdir(), 'anchev-server-'));
@@ -104,6 +129,16 @@ test('reviewed project translations publish with reciprocal metadata and SEO ove
   assert.match(await greek.text(), /Ελληνική ταινία/);
   const sitemap = await (await fetch(`${origin}/sitemap.xml`)).text();
   assert.ok(sitemap.includes('/el/work/translated-film'));
+  const current = (await (await fetch(`${origin}/api/admin/projects`, { headers: { cookie } })).json()).projects.find((project) => project.id === 'translated-film');
+  current.translations.el.seo = { image: '/assets/anchevlogo.png', noindex: true };
+  assert.equal((await adminPost('projects', { ...current, publish: true })).status, 200);
+  const hiddenGreek = load(await (await fetch(`${origin}/el/work/translated-film`)).text());
+  assert.equal(hiddenGreek('meta[name="robots"]').attr('content'), 'noindex,follow');
+  assert.equal(hiddenGreek('meta[property="og:image"]').attr('content'), `${origin}/assets/anchevlogo.png`);
+  const updated = load(await (await fetch(`${origin}/sitemap.xml`)).text(), { xml: true });
+  const locations = updated('url > loc').map((_index, entry) => updated(entry).text()).get();
+  assert.equal(locations.includes(`${origin}/el/work/translated-film`), false);
+  assert.ok(locations.includes(`${origin}/work/translated-film`));
 });
 
 test('custom page drafts stay private and published pages and redirects resolve', async () => {
