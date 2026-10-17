@@ -4,6 +4,30 @@ import { copy, homepageFields } from '../public/scripts/modules/localization.js'
 import { servicePages, getServicePage } from '../public/scripts/modules/service-pages.js';
 import { renderLegalPanelMarkup } from '../public/scripts/modules/legal.js';
 import { applyCinemaDesign } from './cinema.js';
+import { aboutPageContent } from '../public/scripts/content.js';
+
+const brandHomepage = {
+  en: {
+    heroKicker: 'Film production / Athens, Greece',
+    heroPositioning: 'Films for brands, artists and audiences.\nFrom the first idea to the final master.',
+    workHeading: 'Selected work.', workIntro: 'Watch the films. Meet the people behind them.',
+    servicesHeading: 'What we make.', servicesIntro: 'Commercial films, branded stories, fiction, documentary and music videos. One connected production process, with post-production built in.',
+    studioHeading: 'Anchev Studio.', clientsHeading: 'Selected collaborators.',
+    story0Label: '01 / Development', story0Heading: 'Start with the idea.', story0Body: 'A brief, treatment and visual references establish the story, audience and direction before the shoot.',
+    story1Label: '02 / Production', story1Heading: 'Give it a working plan.', story1Body: 'Crew, casting, locations, budget and schedule follow the film. Responsibilities and approvals are agreed before production.',
+    story2Label: '03 / Post-production', story2Heading: 'Finish for the screen.', story2Body: 'Editing, colour and sound bring the film together. Masters, captions and versions follow the agreed release plan.'
+  },
+  el: {
+    heroKicker: 'Παραγωγή ταινιών / Αθήνα',
+    heroPositioning: 'Ταινίες για brands, καλλιτέχνες και κοινά.\nΑπό την πρώτη ιδέα ως την τελική κόπια.',
+    workHeading: 'Επιλεγμένες ταινίες.', workIntro: 'Δείτε τις ταινίες και γνωρίστε τους ανθρώπους πίσω από την παραγωγή.',
+    servicesHeading: 'Οι ταινίες που κάνουμε.', servicesIntro: 'Διαφημιστικά, ταινίες για brands, μυθοπλασία, ντοκιμαντέρ και μουσικά βίντεο. Μια ενιαία διαδικασία, από την ανάπτυξη έως το post-production.',
+    studioHeading: 'Anchev Studio.', clientsHeading: 'Επιλεγμένες συνεργασίες.',
+    story0Label: '01 / Ανάπτυξη', story0Heading: 'Ξεκινάμε από την ιδέα.', story0Body: 'Brief, treatment και οπτικές αναφορές ορίζουν την ιστορία, το κοινό και την κατεύθυνση πριν από το γύρισμα.',
+    story1Label: '02 / Παραγωγή', story1Heading: 'Οργανώνουμε το γύρισμα.', story1Body: 'Συνεργείο, casting, χώροι, προϋπολογισμός και πρόγραμμα σχεδιάζονται γύρω από την ταινία. Αρμοδιότητες και εγκρίσεις συμφωνούνται από την αρχή.',
+    story2Label: '03 / Post-production', story2Heading: 'Μέχρι την τελική εικόνα.', story2Body: 'Μοντάζ, χρώμα και ήχος ολοκληρώνουν την ταινία. Αρχεία, υπότιτλοι και εκδόσεις ακολουθούν το συμφωνημένο πλάνο προβολής.'
+  }
+};
 
 const greekHome = {
   '.hero-kicker': 'Κινηματογραφική παραγωγή / Αθήνα',
@@ -95,16 +119,8 @@ export const sitePageTemplates = () => {
         { type: 'link', title: greek ? 'Οδηγίες άφιξης' : 'Get directions', url: location.find('a').attr('href') },
         ...[1, 2, 3].map((number) => ({ type: 'image', url: `/media/studio/studio-frame-0${number}.jpg`, alt: `${greek ? 'Εικόνα στούντιο' : 'Studio view'} ${number}` }))
       ] },
-      { id: 'contact', locale, heading: greek ? 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.' : "Have something in mind? Let's make it.", intro: '', body: '', blocks: [] },
-      { id: 'about', locale, heading: 'Anchev Films.', intro: greek ? 'Ανεξάρτητη εταιρεία κινηματογραφικής και οπτικοακουστικής παραγωγής με βάση την Αθήνα και συνεργασίες στην Ελλάδα και διεθνώς.' : 'An independent film and audiovisual production company based in Athens, working with brands, agencies and collaborators in Greece and internationally.', body: '', blocks: greek ? [
-        { type: 'text', title: 'Η φιλοδοξία χρειάζεται σχέδιο.', text: 'Μια καλή ιδέα χρειάζεται ένα πλάνο που να αντέχει στις απαιτήσεις του προϋπολογισμού, του χρόνου, των χώρων και της ομάδας. Ορίζουμε νωρίς την κατεύθυνση και οργανώνουμε την παραγωγή γύρω από το έργο.' },
-        { type: 'text', title: 'Η παραγωγή δίνει ρυθμό.', text: 'Φέρνουμε τους σωστούς ανθρώπους στη συζήτηση από την αρχή και κρατάμε κοντά τη δημιουργική πρόθεση με την εκτέλεση. Έτσι η ιδέα διατηρεί τον χαρακτήρα της μέχρι την παράδοση.' },
-        { type: 'text', title: 'Μέχρι την τελική παράδοση.', text: 'Από το πρώτο treatment έως το τελικό αρχείο, κάθε επιλογή υπηρετεί την ταινία. Σχεδιάζουμε για διαφορετικά κοινά, κανάλια και αγορές.' }
-      ] : [
-        { type: 'text', title: 'Ambition needs a way through.', text: 'A good idea needs a plan that can carry it through the realities of budget, schedule, location and people. We build the structure early: one clear direction, the right team and a production plan that keeps the work moving.' },
-        { type: 'text', title: 'Production should create momentum.', text: 'We bring the right people into the conversation early and keep creative intent close to execution. The production moves forward without losing the character of the idea.' },
-        { type: 'text', title: 'Through to delivery.', text: 'From the first treatment to the final file, each choice serves the film. We plan for its life across audiences, channels and markets.' }
-      ] }
+      { id: 'contact', locale, heading: copy(locale).contactTitle, intro: '', body: '', blocks: [] },
+      { id: 'about', locale, ...aboutPageContent[locale] }
     ];
   });
 };
@@ -196,7 +212,8 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
       } else $(`#panel-content-${key}`).html(renderLegalPanelMarkup(key, language));
     }
     for (const field of homepageFields) {
-      const value = contentSettings.homepage?.[language]?.[field.key];
+      const override = contentSettings.homepage?.[language]?.[field.key];
+      const value = typeof override === 'string' && override.trim() ? override : brandHomepage[language]?.[field.key];
       if (typeof value === 'string' && value.trim()) $(field.selector).html(escapeHtml(value).replace(/\n/g, '<br />')).removeAttr('lang');
     }
     const contactPage = pageOverride?.id === 'contact' ? pageOverride : store.page('contact', language, true);

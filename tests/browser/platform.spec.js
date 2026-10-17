@@ -20,6 +20,32 @@ test('public locales fit and optional tracking stays off until consent', async (
   expect(errors).toEqual([]);
 });
 
+test('brand menu contains keyboard focus and restores its opener', async ({ page }) => {
+  for (const route of ['/', '/el/']) {
+    await page.goto(route);
+    const consent = page.locator('[data-consent-reject]');
+    if (await consent.isVisible()) await consent.click();
+    const opener = page.locator('#cinema-menu > summary');
+    await opener.click();
+    const menu = page.locator('#cinema-menu-sheet');
+    const close = menu.locator('[data-cinema-menu-close]');
+    const last = menu.locator('a[href]').last();
+    await expect(close).toBeFocused();
+    await close.press('Shift+Tab');
+    await expect(last).toBeFocused();
+    await last.press('Tab');
+    await expect(close).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(opener).toBeFocused();
+    await expect(page.locator('#main-content')).not.toHaveAttribute('inert');
+    await opener.click();
+    await close.click();
+    await expect(menu).toBeHidden();
+    await expect(opener).toBeFocused();
+  }
+});
+
 test('destination pages provide bilingual navigation, readable layouts and working work filters', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -30,7 +56,10 @@ test('destination pages provide bilingual navigation, readable layouts and worki
       expect(await page.locator('h1').count()).toBe(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(page.locator('.cinema-footer a[href$="/news"]')).toBeAttached();
-      if (key === 'services') await expect(page.locator('.cinema-service-list > li')).toHaveCount(8);
+      if (key === 'services') {
+        await expect(page.locator('.cinema-overview-content > .cinema-service-list > li')).toHaveCount(6);
+        await expect(page.locator('.cinema-support .cinema-service-list > li')).toHaveCount(7);
+      }
       if (key === 'work') {
         await page.locator('#work-search').fill('No film matches this unique query');
         await expect(page.locator('#work-no-results')).toBeVisible();
@@ -98,6 +127,33 @@ test('showreel opens on demand, contains keyboard focus and restores the trigger
   await expect(page.locator('#reel-player')).toHaveAttribute('aria-hidden', 'true');
   await expect(trigger).toBeFocused();
   expect(await page.locator('main').evaluate((main) => main.inert)).toBe(false);
+});
+
+test('brand inquiry errors focus a summary and preserve the brief after a failed request', async ({ page }) => {
+  await page.goto('/contact');
+  await page.locator('[data-consent-reject]').click();
+  await page.locator('#inquiry-name').fill('Film producer');
+  await page.locator('#inquiry-email').fill('not-an-email');
+  await page.locator('#inquiry-type').selectOption('music-videos');
+  await page.locator('#inquiry-message').fill('A music video production in Athens, with studio filming.');
+  await page.locator('#inquiry-privacy').check();
+  let requests = 0;
+  await page.route('**/api/contact', async (route) => { requests++; await route.fulfill({ status: 503, json: { error: 'Temporarily unavailable' } }); });
+  await page.locator('#inquiry-form [type="submit"]').click();
+  await expect(page.locator('#inquiry-errors')).toBeFocused();
+  await expect(page.locator('#inquiry-email')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#inquiry-errors')).toContainText('@');
+  expect(requests).toBe(0);
+  await page.locator('#inquiry-errors a[href="#inquiry-email"]').click();
+  await expect(page.locator('#inquiry-email')).toBeFocused();
+  await page.locator('#inquiry-email').fill('producer@example.invalid');
+  await page.locator('#inquiry-form [type="submit"]').click();
+  await expect(page.locator('#inquiry-status')).toContainText('could not be sent');
+  await expect(page.locator('#inquiry-name')).toHaveValue('Film producer');
+  await expect(page.locator('#inquiry-type')).toHaveValue('music-videos');
+  await expect(page.locator('#inquiry-message')).toHaveValue(/studio filming/);
+  await expect(page.locator('#inquiry-errors')).toBeHidden();
+  expect(requests).toBe(1);
 });
 
 test('Greek inquiry submits once with explicit consent and shows a real receipt', async ({ page }) => {

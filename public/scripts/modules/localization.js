@@ -21,9 +21,10 @@ export const homepageFields = [
 
 const dictionaries = {
   en: {
-    start: 'Start a project / Athens to worldwide', contactTitle: "Have something in mind? Let's make it.",
+    start: 'Start a project', contactTitle: "Let's talk about the film.",
     email: 'Email', phone: 'Telephone', worldwide: 'Available worldwide', name: 'Name', company: 'Company', message: 'Your production brief',
-    inquiryTitle: 'Tell us about your next film.', send: 'Send inquiry', sending: 'Sending...',
+    inquiryTitle: 'Send a brief.', send: 'Send brief', sending: 'Sending...',
+    checkFields: 'Check the following fields. Your entries have been kept.', requiredField: 'Complete this field.', invalidEmail: 'Enter a valid email address with an @ symbol.', minLength: 'Enter at least', characters: 'characters.', privacyRequired: 'Confirm the privacy notice before sending.',
     privacy: 'I agree to the processing of my details to respond to this inquiry.', privacyLink: 'Privacy notice',
     success: 'Your inquiry has been received. Thank you.', error: 'Your inquiry could not be sent. Try again or email us.',
     work: 'Selected work', viewFilm: 'View film', all: 'All projects', filter: 'Filter productions', search: 'Search productions',
@@ -36,9 +37,10 @@ const dictionaries = {
     close: 'Close', base: 'Base', caseStudy: 'case study', watchYoutube: 'Watch on YouTube', readCoverage: 'Read the coverage', gallery: 'Production gallery', viewProject: 'View project', photograph: 'Production photograph', hours: 'hr', minutes: 'min'
   },
   el: {
-    start: 'Ξεκινήστε μια παραγωγή / Αθήνα και διεθνώς', contactTitle: 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.',
+    start: 'Η επόμενη παραγωγή σας', contactTitle: 'Ας μιλήσουμε για την ταινία σας.',
     email: 'Email', phone: 'Τηλέφωνο', worldwide: 'Παραγωγές στην Ελλάδα και διεθνώς', name: 'Ονοματεπώνυμο', company: 'Εταιρεία', message: 'Η παραγωγή που σχεδιάζετε',
-    inquiryTitle: 'Ας μιλήσουμε για την επόμενη ταινία σας.', send: 'Αποστολή αιτήματος', sending: 'Αποστολή...',
+    inquiryTitle: 'Στείλτε το brief.', send: 'Αποστολή brief', sending: 'Αποστολή...',
+    checkFields: 'Ελέγξτε τα παρακάτω πεδία. Τα στοιχεία σας έχουν διατηρηθεί.', requiredField: 'Συμπληρώστε το πεδίο.', invalidEmail: 'Συμπληρώστε έγκυρη διεύθυνση email με το σύμβολο @.', minLength: 'Συμπληρώστε τουλάχιστον', characters: 'χαρακτήρες.', privacyRequired: 'Επιβεβαιώστε την ενημέρωση απορρήτου πριν από την αποστολή.',
     privacy: 'Συμφωνώ με την επεξεργασία των στοιχείων μου για την απάντηση στο αίτημά μου.', privacyLink: 'Πολιτική απορρήτου',
     success: 'Λάβαμε το αίτημά σας. Ευχαριστούμε.', error: 'Το αίτημα δεν στάλθηκε. Δοκιμάστε ξανά ή επικοινωνήστε με email.',
     work: 'Επιλεγμένες παραγωγές', viewFilm: 'Δείτε την ταινία', all: 'Όλες οι παραγωγές', filter: 'Κατηγορία παραγωγής', search: 'Αναζήτηση παραγωγών',

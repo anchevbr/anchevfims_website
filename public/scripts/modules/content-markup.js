@@ -437,14 +437,15 @@ const renderSocialLinks = (social) => (Array.isArray(social) ? social : [])
 export const renderInquiryForm = (language = 'en', { studio = false } = {}) => {
   const words = copy(language);
   const greek = language === 'el';
-  const options = [['commercial-production', 'Commercial production', 'Διαφημιστικό'], ['branded-content', 'Branded content', 'Περιεχόμενο για brands'], ['corporate-video-production', 'Corporate film', 'Εταιρική ταινία'], ['film-documentary-production', 'Film / documentary', 'Ταινία / ντοκιμαντέρ'], ['event-video-production', 'Event / live production', 'Εκδήλωση / ζωντανή παραγωγή'], ['production-services-greece', 'Production services in Greece', 'Υπηρεσίες παραγωγής στην Ελλάδα'], ['post-production', 'Post-production', 'Post-production'], ['photography', 'Photography', 'Φωτογραφία'], ['studio', 'Studio production', 'Παραγωγή στο στούντιο']];
+  const options = [['commercial-production', 'Commercial film', 'Διαφημιστικό'], ['branded-content', 'Branded film', 'Ταινία για brand'], ['narrative-production', 'Narrative production', 'Μυθοπλασία'], ['documentary-production', 'Documentary film', 'Ντοκιμαντέρ'], ['music-videos', 'Music video', 'Μουσικό βίντεο'], ['post-production', 'Post-production', 'Post-production'], ['studio', 'Studio production', 'Παραγωγή στο στούντιο'], ['corporate-video-production', 'Corporate film', 'Εταιρική ταινία'], ['event-video-production', 'Event / live production', 'Εκδήλωση / ζωντανή παραγωγή'], ['production-services-greece', 'Production services in Greece', 'Υπηρεσίες παραγωγής στην Ελλάδα'], ['photography', 'Photography', 'Φωτογραφία']];
   return `<form class="inquiry-form" id="inquiry-form" action="/api/contact" method="post">
     <h3>${studio ? greek ? 'Συζητήστε το γύρισμά σας.' : 'Discuss your studio shoot.' : words.inquiryTitle}</h3>
+    <div class="inquiry-form__errors" id="inquiry-errors" role="alert" tabindex="-1" hidden></div>
     <input type="hidden" name="locale" value="${language}" /><input type="hidden" name="submissionId" value="" />
     <div class="inquiry-form__grid">
       <label for="inquiry-name">${words.name}<input id="inquiry-name" name="name" autocomplete="name" minlength="2" maxlength="120" required /></label>
       <label for="inquiry-email">${words.email}<input id="inquiry-email" name="email" type="email" autocomplete="email" maxlength="254" required /></label>
-      <label for="inquiry-company">${words.company}<input id="inquiry-company" name="company" autocomplete="organization" maxlength="200" /></label>
+      <label for="inquiry-company">${words.company} ${greek ? '(προαιρετικό)' : '(optional)'}<input id="inquiry-company" name="company" autocomplete="organization" maxlength="200" /></label>
       ${studio ? '<input type="hidden" name="productionType" value="studio" />' : `<label for="inquiry-type">${greek ? 'Είδος παραγωγής (προαιρετικό)' : 'Production type (optional)'}<select id="inquiry-type" name="productionType"><option value="">${greek ? 'Επιλογή' : 'Select'}</option>${options.map(([value, en, el]) => `<option value="${value}">${greek ? el : en}</option>`).join('')}</select></label>`}
       <label for="inquiry-timeline">${greek ? 'Ημερομηνίες / χρονοδιάγραμμα (προαιρετικό)' : 'Dates / timeline (optional)'}<input id="inquiry-timeline" name="timeline" maxlength="120" /></label>
       ${studio ? `<label for="inquiry-crew">${greek ? 'Μέγεθος συνεργείου (προαιρετικό)' : 'Crew size (optional)'}<input id="inquiry-crew" name="crewSize" type="number" min="1" max="9999" inputmode="numeric" /></label>` : `<label for="inquiry-location">${greek ? 'Τοποθεσία (προαιρετικό)' : 'Location (optional)'}<input id="inquiry-location" name="location" maxlength="200" /></label>`}
@@ -469,7 +470,7 @@ export const renderContactPageMarkup = (contact, language = 'en', editorial = nu
     <div class="contact-final">
       <div>
         <p class="contact-final__eyebrow">${words.start}</p>
-        <h2 class="contact-final__title">${editorial ? escapeHtml(editorial.heading).replace(/\n/g, '<br />') : language === 'el' ? 'Έχετε μια ιδέα;<br><em>Ας της δώσουμε εικόνα.</em>' : "Have something<br>in mind?<br><em>Let's make it.</em>"}</h2>
+        <h2 class="contact-final__title">${escapeHtml(editorial ? editorial.heading : words.contactTitle).replace(/\n/g, '<br />')}</h2>
         ${editorial?.intro ? `<p>${escapeHtml(editorial.intro).replace(/\n/g, '<br />')}</p>` : ''}
         ${editorial?.body ? `<p>${escapeHtml(editorial.body).replace(/\n/g, '<br />')}</p>` : ''}
       </div>

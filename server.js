@@ -1270,7 +1270,7 @@ app.get(['/project', '/project.html'], (_req, res) => res.redirect(301, '/'));
 app.get('/vendor/lucide.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules', 'lucide', 'dist', 'umd', 'lucide.min.js')));
 app.get('/vendor/quill.js', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules', 'quill', 'dist', 'quill.js')));
 app.get('/vendor/quill.snow.css', (_req, res) => res.sendFile(path.join(__dirname, 'node_modules', 'quill', 'dist', 'quill.snow.css')));
-for (const font of ['manrope', 'bodoni-moda', 'gfs-didot']) {
+for (const font of ['manrope', 'bodoni-moda', 'gfs-didot', 'source-serif-4', 'ibm-plex-sans']) {
   app.use(`/fonts/${font}`, express.static(path.join(__dirname, 'node_modules', '@fontsource' + (font === 'gfs-didot' ? '' : '-variable'), font, 'files'), { dotfiles: 'deny', index: false, maxAge: '7d' }));
 }
 app.get(['/admin', '/admin.html'], (_req, res) => {

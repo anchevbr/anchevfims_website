@@ -2,8 +2,37 @@ export const setupCinema = () => {
   if (document.body.dataset.cinemaBound) return;
   document.body.dataset.cinemaBound = 'true';
   const menu = document.getElementById('cinema-menu');
+  if (menu) {
+    const opener = menu.querySelector('summary');
+    const sheet = menu.querySelector('.cinema-menu__sheet');
+    const close = sheet.querySelector('[data-cinema-menu-close]');
+    const inertStates = new Map();
+    const updateMenu = () => {
+      document.body.classList.toggle('cinema-menu-open', menu.open);
+      opener.setAttribute('aria-expanded', String(menu.open));
+      if (menu.open) {
+        const outside = [...document.body.children].filter((element) => !element.contains(menu));
+        outside.push(...document.querySelectorAll('.cinema-header > .brandmark, .cinema-nav, .cinema-header .language-switch'));
+        for (const element of outside) { inertStates.set(element, element.inert); element.inert = true; }
+        close.focus({ preventScroll: true });
+      } else {
+        for (const [element, inert] of inertStates) element.inert = inert;
+        inertStates.clear();
+        opener.focus({ preventScroll: true });
+      }
+    };
+    menu.addEventListener('toggle', updateMenu);
+    close.addEventListener('click', () => { menu.open = false; });
+    menu.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab' || !menu.open) return;
+      const controls = [...sheet.querySelectorAll('a[href], button:not([disabled])')].filter((element) => element.getClientRects().length);
+      const first = controls[0]; const last = controls.at(-1);
+      if (event.shiftKey && (document.activeElement === first || !sheet.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || !sheet.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+    });
+  }
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && menu?.open) { menu.open = false; menu.querySelector('summary').focus(); }
+    if (event.key === 'Escape' && menu?.open) { event.preventDefault(); menu.open = false; }
   });
   document.querySelectorAll('[data-news-category]').forEach((button) => button.addEventListener('click', () => {
     const category = button.dataset.newsCategory;

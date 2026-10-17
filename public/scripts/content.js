@@ -1,3 +1,28 @@
+export const aboutPageContent = {
+  en: {
+    heading: 'Anchev Films.',
+    intro: 'An Athens film production company shaping ideas into films for brands, artists and audiences.',
+    body: 'We develop and produce films, from the first conversation to the final master. Creative development, filming and post-production belong to one process, with a clear scope and people responsible for each stage.',
+    blocks: [
+      { type: 'text', title: 'A clear starting point.', text: 'What is the film about, who is it for, and where will it be seen? We begin with those questions. A brief, treatment and visual references give the team a shared direction before the production is scheduled.' },
+      { type: 'text', title: 'A plan for the set.', text: 'The script and visual approach guide casting, locations, crew and equipment. We agree the budget, schedule, permissions and review stages early, so creative decisions have a practical plan behind them.' },
+      { type: 'text', title: 'Finishing is part of the film.', text: 'The edit, colour and sound carry the story through to release. We plan the masters, aspect ratios, captions and language versions with the intended screenings and platforms in mind.' },
+      { type: 'text', title: 'Boris Anchev.', text: 'Founder and producer of Anchev Films. Based in Athens, the company works with brands, agencies, artists and production collaborators in Greece and internationally. Contact us to discuss a film, a collaboration or a studio production.' }
+    ]
+  },
+  el: {
+    heading: 'Anchev Films.',
+    intro: 'Εταιρεία κινηματογραφικής παραγωγής στην Αθήνα. Αναπτύσσουμε ιδέες και δημιουργούμε ταινίες για brands, καλλιτέχνες και κοινά.',
+    body: 'Από την πρώτη συζήτηση έως την τελική κόπια, δημιουργική ανάπτυξη, γυρίσματα και post-production αποτελούν μια ενιαία διαδικασία. Συμφωνούμε το εύρος της παραγωγής και τις ευθύνες κάθε σταδίου από την αρχή.',
+    blocks: [
+      { type: 'text', title: 'Μια σαφής αφετηρία.', text: 'Ποιο είναι το θέμα, σε ποιον απευθύνεται η ταινία και πού θα προβληθεί; Ξεκινάμε από αυτές τις ερωτήσεις. Το brief, το treatment και οι οπτικές αναφορές δίνουν κοινή κατεύθυνση στην ομάδα πριν οργανωθεί το γύρισμα.' },
+      { type: 'text', title: 'Ένα πλάνο για το γύρισμα.', text: 'Το σενάριο και η οπτική προσέγγιση καθοδηγούν το casting, τις τοποθεσίες, το συνεργείο και τον εξοπλισμό. Προϋπολογισμός, χρονοδιάγραμμα, άδειες και στάδια εγκρίσεων συμφωνούνται έγκαιρα, ώστε οι δημιουργικές αποφάσεις να στηρίζονται σε ένα εφαρμόσιμο σχέδιο.' },
+      { type: 'text', title: 'Μέχρι την τελική κόπια.', text: 'Μοντάζ, χρώμα και ήχος δίνουν στην ιστορία την τελική της μορφή. Σχεδιάζουμε αρχεία παράδοσης, αναλογίες εικόνας, υπότιτλους και γλωσσικές εκδόσεις με βάση τις προβολές και τις πλατφόρμες που θα φιλοξενήσουν την ταινία.' },
+      { type: 'text', title: 'Boris Anchev.', text: 'Ιδρυτής και παραγωγός της Anchev Films. Με βάση την Αθήνα, η εταιρεία συνεργάζεται με brands, διαφημιστικές εταιρείες, καλλιτέχνες και επαγγελματίες παραγωγής στην Ελλάδα και διεθνώς. Επικοινωνήστε για μια ταινία, μια συνεργασία ή ένα γύρισμα στο στούντιο.' }
+    ]
+  }
+};
+
 export const siteContent = {
   clients: ['AETHER', 'VELA', 'NOIR HOTELS', 'SOLACE', 'MONOCHROME', 'ATLAS AUTO'],
   contact: {
