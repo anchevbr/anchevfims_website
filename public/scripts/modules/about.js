@@ -56,6 +56,7 @@ const setupAboutRoute = (root) => {
   const quote = root.querySelector('.about-ed-quote-wrap');
   const hero = root.querySelector('.about-ed-hero');
   const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (!editorial || !productionFieldSvg || !productionFieldGrid || !route || !routeSvg || !routeTrack || !routeProgress || !routeNodes || !bar || !quote || !hero) return () => {};
 
   sections.forEach((section) => {
     section.dataset.routePosition = String(Math.random() * 2 - 1);

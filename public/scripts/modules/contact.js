@@ -59,24 +59,66 @@ export const renderContact = () => {
   const form = document.getElementById('inquiry-form');
   if (!form || form.dataset.bound) return;
   form.dataset.bound = 'true';
+  form.noValidate = true;
+  const errors = document.getElementById('inquiry-errors');
+  const descriptions = new Map();
+  const clearValidation = () => {
+    for (const [control, description] of descriptions) {
+      control.removeAttribute('aria-invalid');
+      if (description) control.setAttribute('aria-describedby', description);
+      else control.removeAttribute('aria-describedby');
+    }
+    descriptions.clear();
+    errors.hidden = true;
+    errors.replaceChildren();
+  };
+  errors.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href^="#inquiry-"]');
+    if (!link) return;
+    event.preventDefault();
+    document.getElementById(link.hash.slice(1))?.focus();
+  });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (document.documentElement.hasAttribute('data-settings-preview')) return;
+    if (form.dataset.sending === 'true') return;
     const words = copy();
+    clearValidation();
+    const invalid = [...form.elements].filter((control) => control.willValidate && !control.validity.valid);
+    if (invalid.length) {
+      errors.innerHTML = `<p>${words.checkFields}</p><ul>${invalid.map((control) => {
+        const errorId = `${control.id}-error`;
+        const description = control.getAttribute('aria-describedby');
+        descriptions.set(control, description);
+        control.setAttribute('aria-invalid', 'true');
+        control.setAttribute('aria-describedby', [description, errorId].filter(Boolean).join(' '));
+        const message = control.validity.valueMissing ? control.type === 'checkbox' ? words.privacyRequired : words.requiredField : control.validity.typeMismatch && control.type === 'email' ? words.invalidEmail : control.validity.tooShort ? `${words.minLength} ${control.minLength} ${words.characters}` : control.validationMessage;
+        const label = control.labels?.[0]?.firstChild?.textContent || control.name;
+        return `<li id="${errorId}"><a href="#${control.id}">${escapeHtml(label)}: ${escapeHtml(message)}</a></li>`;
+      }).join('')}</ul>`;
+      errors.hidden = false;
+      errors.focus();
+      return;
+    }
+    form.dataset.sending = 'true';
+    form.elements.submissionId.value ||= crypto.randomUUID();
     const submit = form.querySelector('[type="submit"]');
     const status = document.getElementById('inquiry-status');
     submit.disabled = true;
     submit.textContent = words.sending;
     status.textContent = '';
+    delete status.dataset.state;
     try {
       const values = Object.fromEntries(new FormData(form));
       const response = await fetch('/api/contact', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...values, privacy: form.elements.privacy.checked, locale: locale() }) });
       if (!response.ok) throw new Error(words.error);
       status.textContent = words.success;
+      status.dataset.state = 'success';
       form.reset();
       window.dispatchEvent(new CustomEvent('anchev:inquiry-received'));
     } catch {
       status.textContent = words.error;
-    } finally { submit.disabled = false; submit.textContent = words.send; }
+      status.dataset.state = 'error';
+    } finally { delete form.dataset.sending; submit.disabled = false; submit.textContent = words.send; }
   });
 };

@@ -95,6 +95,32 @@ test('admin APIs reject anonymous requests and legacy shared-secret headers', as
   assert.equal(response.status, 401);
 });
 
+test('news publishing is permissioned, sanitized, scheduled and archived through the existing page lifecycle', async () => {
+  const editor = client();
+  await editor.login('editor@example.com');
+  const document = { id: 'news-real-update', locale: 'en', kind: 'news', heading: 'An authentic update', thumbnail: '/media/real.jpg', imageAlt: 'Production photograph', richContent: '<h2>On set</h2><p><strong>Our work</strong><script>alert(1)</script><a href="javascript:alert(1)">bad</a><img src="/media/real.jpg" onerror="alert(1)" alt="On set"></p>', publicationDate: '2027-01-01T12:00:00+02:00' };
+  let result = await editor.request('/news', 'POST', document);
+  assert.equal(result.response.status, 200);
+  assert.doesNotMatch(result.data.saved.richContent, /<script|onerror|javascript:/);
+  assert.match(result.data.saved.richContent, /<strong>Our work<\/strong>/);
+  assert.equal((await editor.request('/news', 'POST', { ...result.data.saved, publish: true })).response.status, 403);
+  assert.equal((await ownerClient.request('/news', 'POST', { ...result.data.saved, publicationDate: '2027-01-01T12:00', publish: true })).response.status, 400);
+  result = await ownerClient.request('/news', 'POST', { ...result.data.saved, publish: true });
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.saved.status, 'scheduled');
+  assert.equal(store.news().length, 0);
+  assert.equal((await ownerClient.request('/news')).data.news.length, 1);
+  result = await ownerClient.request('/pages/en/news-real-update/archive', 'POST', { version: result.data.saved.version });
+  assert.equal(result.data.saved.status, 'archived');
+  assert.equal(store.page('news-real-update', 'en', true), null);
+  assert.equal((await ownerClient.request('/pages/en/news-real-update', 'DELETE', { version: result.data.saved.version })).response.status, 200);
+  const scheduled = await ownerClient.request('/news', 'POST', { ...document, id: 'news-athens-time', publicationLocal: '2027-07-01T12:00', publish: true });
+  assert.equal(scheduled.data.saved.publicationDate, '2027-07-01T09:00:00Z');
+  assert.equal((await ownerClient.request('/news', 'POST', { ...document, id: 'news-dst-gap', publicationLocal: '2027-03-28T03:30', publish: true })).response.status, 400);
+  assert.equal((await ownerClient.request('/news', 'POST', { ...document, id: 'news-dst-repeat', publicationLocal: '2027-10-31T03:30', publish: true })).response.status, 400);
+  await ownerClient.request('/pages/en/news-athens-time', 'DELETE', { version: scheduled.data.saved.version });
+});
+
 test('settings publication and discard are versioned transitions and keep drafts private', async () => {
   const published = store.settings();
   const original = (await ownerClient.request('/settings')).data;

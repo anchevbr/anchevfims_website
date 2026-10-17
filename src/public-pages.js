@@ -3,6 +3,31 @@ import { escapeHtml, renderContactPageMarkup, renderStudioPageMarkup } from '../
 import { copy, homepageFields } from '../public/scripts/modules/localization.js';
 import { servicePages, getServicePage } from '../public/scripts/modules/service-pages.js';
 import { renderLegalPanelMarkup } from '../public/scripts/modules/legal.js';
+import { applyCinemaDesign } from './cinema.js';
+import { aboutPageContent } from '../public/scripts/content.js';
+
+const brandHomepage = {
+  en: {
+    heroKicker: 'Film production / Athens, Greece',
+    heroPositioning: 'Films for brands, artists and audiences.\nFrom the first idea to the final master.',
+    workHeading: 'Selected work.', workIntro: 'Watch the films. Meet the people behind them.',
+    servicesHeading: 'What we make.', servicesIntro: 'Commercial films, branded stories, fiction, documentary and music videos. One connected production process, with post-production built in.',
+    studioHeading: 'Anchev Studio.', clientsHeading: 'Selected collaborators.',
+    story0Label: '01 / Development', story0Heading: 'Start with the idea.', story0Body: 'A brief, treatment and visual references establish the story, audience and direction before the shoot.',
+    story1Label: '02 / Production', story1Heading: 'Give it a working plan.', story1Body: 'Crew, casting, locations, budget and schedule follow the film. Responsibilities and approvals are agreed before production.',
+    story2Label: '03 / Post-production', story2Heading: 'Finish for the screen.', story2Body: 'Editing, colour and sound bring the film together. Masters, captions and versions follow the agreed release plan.'
+  },
+  el: {
+    heroKicker: 'Παραγωγή ταινιών / Αθήνα',
+    heroPositioning: 'Ταινίες για brands, καλλιτέχνες και κοινά.\nΑπό την πρώτη ιδέα ως την τελική κόπια.',
+    workHeading: 'Επιλεγμένες ταινίες.', workIntro: 'Δείτε τις ταινίες και γνωρίστε τους ανθρώπους πίσω από την παραγωγή.',
+    servicesHeading: 'Οι ταινίες που κάνουμε.', servicesIntro: 'Διαφημιστικά, ταινίες για brands, μυθοπλασία, ντοκιμαντέρ και μουσικά βίντεο. Μια ενιαία διαδικασία, από την ανάπτυξη έως το post-production.',
+    studioHeading: 'Anchev Studio.', clientsHeading: 'Επιλεγμένες συνεργασίες.',
+    story0Label: '01 / Ανάπτυξη', story0Heading: 'Ξεκινάμε από την ιδέα.', story0Body: 'Brief, treatment και οπτικές αναφορές ορίζουν την ιστορία, το κοινό και την κατεύθυνση πριν από το γύρισμα.',
+    story1Label: '02 / Παραγωγή', story1Heading: 'Οργανώνουμε το γύρισμα.', story1Body: 'Συνεργείο, casting, χώροι, προϋπολογισμός και πρόγραμμα σχεδιάζονται γύρω από την ταινία. Αρμοδιότητες και εγκρίσεις συμφωνούνται από την αρχή.',
+    story2Label: '03 / Post-production', story2Heading: 'Μέχρι την τελική εικόνα.', story2Body: 'Μοντάζ, χρώμα και ήχος ολοκληρώνουν την ταινία. Αρχεία, υπότιτλοι και εκδόσεις ακολουθούν το συμφωνημένο πλάνο προβολής.'
+  }
+};
 
 const greekHome = {
   '.hero-kicker': 'Κινηματογραφική παραγωγή / Αθήνα',
@@ -84,7 +109,7 @@ export const sitePageTemplates = () => {
     const greek = locale === 'el';
     const studioCopy = getServicePage('/el/studio').el;
     return [
-      ...servicePages.map((service) => ({ id: `service-${service.slug}`, locale, heading: service[locale].title, intro: service[locale].intro, body: service[locale].brief, blocks: [{ type: 'image', url: '/media/studio/studio-frame-01.jpg', alt: greek ? 'Εσωτερικό στούντιο' : 'Studio interior', title: '', text: '' }, ...service[locale].sections.map(([title, text]) => ({ type: 'text', title, text, url: '', alt: '' }))] })),
+      ...servicePages.map((service) => ({ id: `service-${service.slug}`, locale, heading: service[locale].title, intro: service[locale].intro, body: service[locale].brief, blocks: [{ type: 'image', url: service.heroImage || '/media/studio/studio-frame-01.jpg', alt: service.heroAlt || (greek ? 'Εσωτερικό στούντιο' : 'Studio interior'), title: '', text: '' }, ...service[locale].sections.map(([title, text]) => ({ type: 'text', title, text, url: '', alt: '' })), ...(service[locale].capabilities || []).map((text) => ({ type: 'fact', title: greek ? 'Δυνατότητα' : 'Capability', text }))] })),
       { id: 'studio', locale, heading: greek ? studioCopy.title : 'Anchev Studio.', intro: greek ? studioCopy.intro : studio('.case-study__copy-section').first().find('p:not(.case-study__section-label)').text(), body: greek ? studioCopy.brief : studio('.case-study__copy-section').last().find('p').text(), blocks: [
         { type: 'image', url: '/media/experience/studio-poster.jpg', alt: greek ? 'Anchev Studio' : 'Inside Anchev Studio' },
         { type: 'video', url: '/media/experience/studio-web.mp4' },
@@ -94,7 +119,8 @@ export const sitePageTemplates = () => {
         { type: 'link', title: greek ? 'Οδηγίες άφιξης' : 'Get directions', url: location.find('a').attr('href') },
         ...[1, 2, 3].map((number) => ({ type: 'image', url: `/media/studio/studio-frame-0${number}.jpg`, alt: `${greek ? 'Εικόνα στούντιο' : 'Studio view'} ${number}` }))
       ] },
-      { id: 'contact', locale, heading: greek ? 'Έχετε μια ιδέα; Ας της δώσουμε εικόνα.' : "Have something in mind? Let's make it.", intro: '', body: '', blocks: [] }
+      { id: 'contact', locale, heading: copy(locale).contactTitle, intro: '', body: '', blocks: [] },
+      { id: 'about', locale, ...aboutPageContent[locale] }
     ];
   });
 };
@@ -186,7 +212,8 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
       } else $(`#panel-content-${key}`).html(renderLegalPanelMarkup(key, language));
     }
     for (const field of homepageFields) {
-      const value = contentSettings.homepage?.[language]?.[field.key];
+      const override = contentSettings.homepage?.[language]?.[field.key];
+      const value = typeof override === 'string' && override.trim() ? override : brandHomepage[language]?.[field.key];
       if (typeof value === 'string' && value.trim()) $(field.selector).html(escapeHtml(value).replace(/\n/g, '<br />')).removeAttr('lang');
     }
     const contactPage = pageOverride?.id === 'contact' ? pageOverride : store.page('contact', language, true);
@@ -233,12 +260,14 @@ export const renderPublicDocument = (html, { language = 'en', route = '/', store
     });
   }
   const pageId = route.match(/^\/(?:el\/)?pages\/([a-z0-9-]+)$/)?.[1];
-  const hasCounterpart = home || Boolean(project?.hasGreek) || /^\/(?:el\/)?(?:studio|privacy)$/.test(route) || /^\/(?:el\/)?services\//.test(route) || Boolean(pageId && store.page(pageId, language === 'el' ? 'en' : 'el', true));
+  const newsId = route.match(/^\/(?:el\/)?news\/([a-z0-9-]+)$/)?.[1];
+  const hasCounterpart = home || Boolean(project?.hasGreek) || /^\/(?:el\/)?(?:studio|privacy|work|services|about|contact|press|podcast|news)$/.test(route) || /^\/(?:el\/)?services\//.test(route) || Boolean(pageId && store.page(pageId, language === 'el' ? 'en' : 'el', true)) || Boolean(newsId && store.page(`news-${newsId}`, language === 'el' ? 'en' : 'el', true));
   const counterpart = hasCounterpart ? language === 'el' ? route.replace(/^\/el(?=\/|$)/, '') || '/' : `/el${route === '/' || route === '/index.html' ? '/' : route}` : null;
   const languageLinks = `<nav class="language-switch" aria-label="${language === 'el' ? 'Γλώσσα' : 'Language'}"><a href="${language === 'el' ? counterpart || '/' : route}" lang="en" ${language === 'en' ? 'aria-current="page"' : ''}>EN</a>${counterpart || language === 'el' ? `<a href="${language === 'el' ? route : counterpart}" lang="el" ${language === 'el' ? 'aria-current="page"' : ''}>EL</a>` : ''}</nav>`;
   if ($('.topbar-actions').length) $('.topbar-actions').prepend(languageLinks);
   else if ($('.case-study__header').length) $('.case-study__header').prepend(languageLinks);
   else $('.editorial-page > header').prepend(languageLinks);
+  applyCinemaDesign($, { language, route, home, store, settings: settingsOverride || store.settings(), languageLinks });
   $('img').each((_index, element) => {
     const image = $(element);
     const url = image.attr('src');

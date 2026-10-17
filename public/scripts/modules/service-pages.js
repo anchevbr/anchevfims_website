@@ -31,6 +31,8 @@ const services = [
     slug: 'corporate-video-production',
     en: {
       title: 'Corporate Video Production',
+      summary: 'Company stories, people and messages with purpose.',
+      capabilities: ['Company profile films', 'Leadership interviews', 'Customer testimonials', 'Recruitment films', 'Internal communications', 'Training videos'],
       description: 'Corporate video production in Athens for company stories, interviews and communications. Plan filming, approvals and platform-ready delivery with Anchev Films.',
       intro: 'A corporate film needs a clear purpose, not just a polished image. Anchev Films helps turn your company story, people and message into a production brief that can be filmed and delivered with clear responsibility.',
       sections: [
@@ -42,6 +44,8 @@ const services = [
     },
     el: {
       title: 'Παραγωγή εταιρικού βίντεο',
+      summary: 'Η εταιρεία, οι άνθρωποι και το μήνυμά σας με σαφήνεια.',
+      capabilities: ['Ταινίες εταιρικής παρουσίασης', 'Συνεντεύξεις στελεχών', 'Μαρτυρίες πελατών', 'Βίντεο προσέλκυσης προσωπικού', 'Εσωτερική επικοινωνία', 'Εκπαιδευτικά βίντεο'],
       description: 'Εταιρικά βίντεο στην Αθήνα από την Anchev Films. Παρουσιάσεις εταιρειών, συνεντεύξεις και εταιρική επικοινωνία με οργανωμένα γυρίσματα και τελική παράδοση.',
       intro: 'Ένα εταιρικό βίντεο χρειάζεται σαφή σκοπό, όχι μόνο προσεγμένη εικόνα. Η Anchev Films μετατρέπει την ιστορία, τους ανθρώπους και το μήνυμα της εταιρείας σας σε ένα οργανωμένο πλάνο παραγωγής.',
       sections: [
@@ -56,6 +60,8 @@ const services = [
     slug: 'production-services-greece',
     en: {
       title: 'Production Services in Greece',
+      summary: 'Local knowledge. A workable production plan.',
+      capabilities: ['Location scouting', 'Production coordination', 'Local crew', 'Equipment planning', 'Casting support', 'On-set logistics'],
       description: 'Production planning and film production services in Greece with an Athens-based partner. Discuss locations, crew, equipment, schedules and post-production.',
       intro: 'For a production in Greece, creative ambition needs a workable local plan. Based in Athens, Anchev Films brings together the preparation, filming and delivery decisions that keep a project organised.',
       sections: [
@@ -67,6 +73,8 @@ const services = [
     },
     el: {
       title: 'Υπηρεσίες παραγωγής στην Ελλάδα',
+      summary: 'Τοπική γνώση. Ένα εφαρμόσιμο πλάνο παραγωγής.',
+      capabilities: ['Αναζήτηση τοποθεσιών', 'Συντονισμός παραγωγής', 'Τοπικά συνεργεία', 'Σχεδιασμός εξοπλισμού', 'Υποστήριξη casting', 'Οργάνωση γυρισμάτων'],
       description: 'Υπηρεσίες κινηματογραφικής παραγωγής στην Ελλάδα με βάση την Αθήνα. Προετοιμασία, τοποθεσίες, συνεργείο, εξοπλισμός και post-production από την Anchev Films.',
       intro: 'Μια παραγωγή στην Ελλάδα χρειάζεται δημιουργική κατεύθυνση και ένα εφαρμόσιμο τοπικό πλάνο. Με βάση την Αθήνα, η Anchev Films συντονίζει την προετοιμασία, τα γυρίσματα και τις αποφάσεις παράδοσης ενός έργου.',
       sections: [
@@ -105,6 +113,267 @@ const services = [
   }
 ];
 
+services.push(
+  {
+    slug: 'commercial-production', heroImage: '/media/studio/studio-frame-01.jpg',
+    related: ['branded-content', 'post-production', 'photography'],
+    en: {
+      title: 'Commercial films', summary: 'Advertising, product and campaign films.',
+      description: 'Commercial production in Athens and Greece. Television spots, digital advertising and product films, from creative development to finished campaign assets.',
+      intro: 'A commercial has a short time to earn attention. We build the film around a clear idea, a precise visual language and the places your campaign will appear.',
+      capabilities: ['Television commercials', 'Digital advertising', 'Product films', 'Cinematic brand films', 'Social advertising', 'Commercial cinematography'],
+      sections: [
+        ['A campaign, not just a shoot', 'We start with the audience, campaign objective and media plan. Treatments, scripts and visual references establish the tone before crew, locations and equipment are selected. A television spot and a vertical social edit should be planned together, not forced into the same frame afterward.'],
+        ['Creative intent on a working set', 'Pre-production connects the treatment to a realistic budget and schedule. We coordinate casting, locations, art direction, cinematography and production logistics around the agreed scope, keeping agencies and brand teams close to the decisions that affect the film.'],
+        ['Built for release', 'Editing, colour, sound and finishing carry the idea through to the final master. We agree durations, aspect ratios, subtitles and delivery specifications before filming, with review stages that give your team a clear route to approval.']
+      ],
+      brief: 'Share your campaign brief, audience, agency involvement, reference films, intended platforms and release date. A budget range and required versions help us shape a production that fits the campaign.'
+    },
+    el: {
+      title: 'Παραγωγή διαφημιστικών', summary: 'Καμπάνιες για κάθε οθόνη και κοινό.',
+      description: 'Παραγωγή διαφημιστικών στην Αθήνα και την Ελλάδα. Τηλεοπτικά spots, ψηφιακές καμπάνιες και ταινίες προϊόντων από τη δημιουργική ιδέα έως την παράδοση.',
+      intro: 'Ένα διαφημιστικό έχει λίγο χρόνο για να κερδίσει την προσοχή. Σχεδιάζουμε την ταινία γύρω από μια σαφή ιδέα, συγκεκριμένη οπτική γλώσσα και τα κανάλια της καμπάνιας.',
+      capabilities: ['Τηλεοπτικά διαφημιστικά', 'Ψηφιακές καμπάνιες', 'Ταινίες προϊόντων', 'Ταινίες εταιρικής ταυτότητας', 'Διαφήμιση στα κοινωνικά δίκτυα', 'Κινηματογράφηση διαφημιστικών'],
+      sections: [
+        ['Σχεδιασμός για ολόκληρη την καμπάνια', 'Ξεκινάμε με το κοινό, τον επικοινωνιακό στόχο και το πλάνο προβολής. Treatment, σενάριο και οπτικές αναφορές ορίζουν το ύφος πριν επιλεγούν συνεργείο, χώροι και εξοπλισμός. Οι τηλεοπτικές και κάθετες εκδοχές σχεδιάζονται μαζί από την αρχή.'],
+        ['Η δημιουργική ιδέα στο γύρισμα', 'Η προετοιμασία συνδέει το treatment με τον προϋπολογισμό και το χρονοδιάγραμμα. Οργανώνουμε casting, τοποθεσίες, εικαστική κατεύθυνση και κινηματογράφηση, με τις ομάδες του brand και του agency κοντά στις κρίσιμες αποφάσεις.'],
+        ['Έτοιμο για προβολή', 'Μοντάζ, χρώμα, ήχος και τελικό φινίρισμα διατηρούν την ιδέα μέχρι την τελική έκδοση. Διάρκειες, αναλογίες εικόνας, υπότιτλοι και προδιαγραφές παράδοσης συμφωνούνται πριν από τα γυρίσματα, μαζί με τα στάδια εγκρίσεων.']
+      ],
+      brief: 'Στείλτε το brief, το κοινό, τις ομάδες που συμμετέχουν, ταινίες αναφοράς, κανάλια προβολής και ημερομηνία κυκλοφορίας. Ένας ενδεικτικός προϋπολογισμός βοηθά στον σωστό σχεδιασμό.'
+    }
+  },
+  {
+    slug: 'branded-content', heroImage: '/media/studio/studio-frame-02.jpg', related: ['commercial-production', 'film-documentary-production', 'post-production'],
+    en: {
+      title: 'Branded films', summary: 'Stories with a brand at their centre.',
+      description: 'Branded content production in Athens: brand stories, social films, digital campaigns and documentary-led content shaped around a real audience.',
+      intro: 'The most useful brand stories give people a reason to stay. We develop films around an original perspective, the people behind a brand and the audience you want to reach.',
+      capabilities: ['Brand storytelling', 'Digital campaigns', 'Social media films', 'Branded documentaries', 'Lifestyle production', 'Product storytelling'],
+      sections: [
+        ['Find the story worth telling', 'A brand film can follow a person, a process or a question. We look for the subject with genuine substance, then choose an editorial or cinematic approach that suits it. Clear communication objectives sit behind the story without replacing it.'],
+        ['Plan a body of content', 'A main film, short edits, interviews and platform-specific material can come from one considered production. We plan the coverage and formats early, so each output has a purpose rather than becoming another version of the same cut.'],
+        ['Keep the voice consistent', 'The edit, music, graphics, colour and subtitles should belong to the same world. We organise review and delivery around the agreed brand guidelines, with an appropriate balance between a recognisable identity and the film\'s own character.']
+      ],
+      brief: 'Tell us about the brand, the audience, the subjects you can give us access to and how the films will be used. Include any existing campaign direction and the formats you need.'
+    },
+    el: {
+      title: 'Ταινίες για brands', summary: 'Άνθρωποι, ιδέες και ιστορίες γύρω από ένα brand.',
+      description: 'Παραγωγή branded content στην Αθήνα. Ιστορίες εταιρικής ταυτότητας, βίντεο για κοινωνικά δίκτυα και περιεχόμενο με προσέγγιση ντοκιμαντέρ.',
+      intro: 'Μια ιστορία για ένα brand χρειάζεται κάτι ουσιαστικό να πει. Αναπτύσσουμε ταινίες γύρω από μια δημιουργική οπτική, πραγματικούς ανθρώπους και το κοινό που θέλετε να προσεγγίσετε.',
+      capabilities: ['Αφήγηση εταιρικής ταυτότητας', 'Ψηφιακές καμπάνιες', 'Βίντεο για κοινωνικά δίκτυα', 'Branded ντοκιμαντέρ', 'Lifestyle παραγωγές', 'Ιστορίες προϊόντων'],
+      sections: [
+        ['Η ιστορία πριν από τη μορφή', 'Ένα πρόσωπο, μια διαδικασία ή ένα ερώτημα μπορεί να αποτελέσει την αφετηρία. Αναζητούμε το ουσιαστικό θέμα και επιλέγουμε την κατάλληλη αφηγηματική ή κινηματογραφική προσέγγιση, με σαφή στόχο επικοινωνίας.'],
+        ['Ένα οργανωμένο σύνολο περιεχομένου', 'Κεντρική ταινία, σύντομα βίντεο, συνεντεύξεις και υλικό για διαφορετικές πλατφόρμες μπορούν να προκύψουν από μία προσεκτικά σχεδιασμένη παραγωγή. Οι ανάγκες λήψεων και οι μορφές συμφωνούνται νωρίς.'],
+        ['Συνεπής δημιουργική φωνή', 'Μοντάζ, μουσική, γραφικά, χρώμα και υπότιτλοι χρειάζεται να ανήκουν στον ίδιο κόσμο. Η διαδικασία εγκρίσεων ακολουθεί τις οδηγίες του brand, διατηρώντας τον χαρακτήρα της ταινίας.']
+      ],
+      brief: 'Μιλήστε μας για το brand, το κοινό, τα θέματα και τους ανθρώπους στους οποίους υπάρχει πρόσβαση. Προσθέστε την κατεύθυνση της καμπάνιας και τις μορφές που χρειάζεστε.'
+    }
+  },
+  {
+    slug: 'film-documentary-production', heroImage: '/media/projects/anti-bullying/photos59.webp', heroAlt: 'On the set of Speak Up. Take Action.', hasProductionExample: true,
+    related: ['production-services-greece', 'post-production', 'branded-content'],
+    en: {
+      title: 'Film & Documentary Production', summary: 'A point of view. A story with something at stake.',
+      description: 'Independent film and documentary production in Athens, Greece. Creative development, cinematography, production planning and complete post-production.',
+      intro: 'Narrative films and documentaries begin with a reason to look closer. We bring creative development and practical production together, with attention to the people and places at the centre of the story.',
+      capabilities: ['Narrative short films', 'Documentary production', 'Creative development', 'Cinematography', 'Independent production', 'Production support'],
+      sections: [
+        ['Develop the perspective', 'Research, access and a clear treatment help define the film before filming begins. For scripted work, that means developing the script and visual approach. For documentaries, it means understanding the subject and planning space for what cannot be scripted.'],
+        ['Make the production possible', 'We scope crew, locations, equipment, schedules and responsibilities around the story. Permissions and contributor arrangements are addressed for the specific production. Cinematography and sound are planned together so the material can carry a coherent film.'],
+        ['Find the film in the material', 'The edit gives the story its rhythm and point of view. Colour, sound design, finishing and subtitles support the film without overwhelming it. The intended screenings, platforms and delivery requirements guide the final versions.']
+      ],
+      brief: 'Share a synopsis or treatment, the current development stage, subject access, intended audience and any existing material. Include your schedule and the support you are seeking.'
+    },
+    el: {
+      title: 'Ταινίες και ντοκιμαντέρ', summary: 'Μια οπτική γωνία. Μια ιστορία με ουσία.',
+      description: 'Παραγωγή ανεξάρτητων ταινιών και ντοκιμαντέρ στην Αθήνα. Δημιουργική ανάπτυξη, κινηματογράφηση, οργάνωση γυρισμάτων και ολοκληρωμένο post-production.',
+      intro: 'Η μυθοπλασία και το ντοκιμαντέρ ξεκινούν από έναν λόγο να κοιτάξουμε πιο προσεκτικά. Συνδυάζουμε τη δημιουργική ανάπτυξη με την παραγωγή, με σεβασμό στους ανθρώπους και τους χώρους της ιστορίας.',
+      capabilities: ['Ταινίες μικρού μήκους', 'Παραγωγή ντοκιμαντέρ', 'Δημιουργική ανάπτυξη', 'Διεύθυνση φωτογραφίας', 'Ανεξάρτητη παραγωγή', 'Υποστήριξη γυρισμάτων'],
+      sections: [
+        ['Η οπτική της ταινίας', 'Έρευνα, πρόσβαση και ένα σαφές treatment ορίζουν την ταινία πριν από το γύρισμα. Στη μυθοπλασία δουλεύουμε το σενάριο και την οπτική προσέγγιση. Στο ντοκιμαντέρ αφήνουμε χώρο για όσα δεν μπορούν να γραφτούν εκ των προτέρων.'],
+        ['Από την ιδέα στην παραγωγή', 'Συνεργείο, τοποθεσίες, εξοπλισμός και χρονοδιάγραμμα σχεδιάζονται γύρω από την ιστορία. Άδειες και συμφωνίες συμμετοχής εξετάζονται για κάθε έργο. Εικόνα και ήχος οργανώνονται ως ενιαίο σύνολο.'],
+        ['Η ιστορία στο μοντάζ', 'Το μοντάζ δίνει ρυθμό και κατεύθυνση στο υλικό. Χρώμα, σχεδιασμός ήχου, φινίρισμα και υπότιτλοι ολοκληρώνουν την ταινία με βάση τις προβολές, τις πλατφόρμες και τις ανάγκες παράδοσης.']
+      ],
+      brief: 'Στείλτε σύνοψη ή treatment, στάδιο ανάπτυξης, διαθέσιμη πρόσβαση στο θέμα και υπάρχον υλικό. Περιγράψτε το χρονοδιάγραμμα και την υποστήριξη που αναζητάτε.'
+    }
+  },
+  {
+    slug: 'event-video-production', heroImage: '/media/studio/studio-frame-03.jpg', related: ['live-streaming-athens', 'corporate-video-production', 'photography'],
+    en: {
+      title: 'Events & Live Production', summary: 'One live moment. A carefully planned production.',
+      description: 'Event video production in Athens: conferences, concerts, corporate events, multi-camera filming and highlight films. Plan live coverage with Anchev Films.',
+      intro: 'An event cannot wait for a second take. We plan coverage around the running order, the audience and the moments that need to survive beyond the room.',
+      capabilities: ['Conference filming', 'Corporate events', 'Concert coverage', 'Multi-camera production', 'Hybrid events', 'Event aftermovies'],
+      sections: [
+        ['Know the programme', 'We review the running order, key participants, stage layout, access and lighting with the event team. Camera positions, interview opportunities and audio feeds are agreed before the audience arrives.'],
+        ['Separate recording from live output', 'An archive recording, a highlight film and a live stream serve different needs. We define the outputs, crew responsibilities and technical requirements for each. Live connectivity and platform settings are reviewed and tested before confirmation.'],
+        ['Give the event a second life', 'Edited highlights, speaker segments and social versions can extend the value of the event. We agree the priority moments, turnaround, approvals and distribution formats before filming, so the edit is planned rather than improvised.']
+      ],
+      brief: 'Send the date, venue, running order, number of stages and expected duration. Tell us whether you need recordings, highlights, interviews, a live stream or a combination.'
+    },
+    el: {
+      title: 'Εκδηλώσεις και ζωντανές παραγωγές', summary: 'Μια ζωντανή στιγμή. Μια προσεκτικά οργανωμένη παραγωγή.',
+      description: 'Βιντεοσκόπηση εκδηλώσεων στην Αθήνα. Συνέδρια, συναυλίες, εταιρικές εκδηλώσεις, πολυκάμερη κάλυψη και βίντεο στιγμιοτύπων από την Anchev Films.',
+      intro: 'Μια εκδήλωση δεν περιμένει δεύτερη λήψη. Οργανώνουμε την κάλυψη γύρω από το πρόγραμμα, το κοινό και τις στιγμές που αξίζει να μείνουν πέρα από την αίθουσα.',
+      capabilities: ['Βιντεοσκόπηση συνεδρίων', 'Εταιρικές εκδηλώσεις', 'Κάλυψη συναυλιών', 'Πολυκάμερη παραγωγή', 'Υβριδικές εκδηλώσεις', 'Βίντεο στιγμιοτύπων'],
+      sections: [
+        ['Γνωρίζουμε το πρόγραμμα', 'Εξετάζουμε τη ροή, τους ομιλητές, τη σκηνή, την πρόσβαση και τον φωτισμό με την ομάδα της εκδήλωσης. Θέσεις καμερών, συνεντεύξεις και πηγές ήχου συμφωνούνται πριν φτάσει το κοινό.'],
+        ['Καταγραφή και ζωντανή μετάδοση', 'Η πλήρης εγγραφή, το σύντομο βίντεο και το live stream έχουν διαφορετικές απαιτήσεις. Ορίζουμε παραδοτέα, αρμοδιότητες και τεχνικές ανάγκες. Σύνδεση και ρυθμίσεις πλατφόρμας ελέγχονται πριν επιβεβαιωθεί μια ζωντανή παραγωγή.'],
+        ['Η εκδήλωση συνεχίζει να επικοινωνεί', 'Στιγμιότυπα, αποσπάσματα ομιλιών και εκδοχές για κοινωνικά δίκτυα δίνουν συνέχεια στην εκδήλωση. Προτεραιότητες, χρόνος παράδοσης, εγκρίσεις και μορφές συμφωνούνται πριν από το γύρισμα.']
+      ],
+      brief: 'Στείλτε ημερομηνία, χώρο, πρόγραμμα, αριθμό σκηνών και διάρκεια. Πείτε μας αν χρειάζεστε εγγραφή, στιγμιότυπα, συνεντεύξεις, live stream ή συνδυασμό τους.'
+    }
+  },
+  {
+    slug: 'post-production', heroImage: '/media/projects/anti-bullying/cover.webp', heroAlt: 'A frame from Speak Up. Take Action.', hasProductionExample: true,
+    related: ['film-documentary-production', 'commercial-production', 'branded-content'],
+    en: {
+      title: 'Post-production', summary: 'Editing, colour, sound and finishing.',
+      description: 'Post-production in Athens: video editing, colour grading, sound design, motion graphics, finishing, subtitles and delivery for films and campaigns.',
+      intro: 'Post-production is where the material becomes the film. We work with the story, rhythm, colour and sound as one experience, with a clear path from first cut to final delivery.',
+      capabilities: ['Video editing', 'Colour grading', 'Motion graphics & VFX', 'Sound design', 'Finishing', 'Subtitles & localisation'],
+      sections: [
+        ['Start with the material', 'We review the footage, sound, brief and intended outputs before defining the edit. For existing productions, share the camera formats, project files, references and any missing elements. An organised handover protects both the schedule and the material.'],
+        ['Shape the film, then refine it', 'Editorial decisions establish structure and pace. Colour grading, sound design, graphics and visual effects are scoped around the film\'s needs. We agree review rounds and approval responsibilities so feedback stays clear and actionable.'],
+        ['Finish for the destination', 'Masters, aspect ratios, cutdowns, subtitles and language versions follow the agreed release plan. Technical specifications are confirmed for the destination rather than assumed, and the final handover is organised around the files your team actually needs.']
+      ],
+      brief: 'Send the brief, footage or project details, reference films, delivery deadline and required formats. Let us know which stages are already complete and what needs editing, finishing or adaptation.'
+    },
+    el: {
+      title: 'Post-production', summary: 'Ο ρυθμός της ιστορίας. Η λεπτομέρεια της τελικής εικόνας.',
+      description: 'Post-production στην Αθήνα. Μοντάζ, χρωματική επεξεργασία, σχεδιασμός ήχου, motion graphics, τελικό φινίρισμα, υπότιτλοι και εκδόσεις παράδοσης.',
+      intro: 'Στο post-production το υλικό γίνεται ταινία. Δουλεύουμε ιστορία, ρυθμό, χρώμα και ήχο ως ενιαία εμπειρία, από το πρώτο μοντάζ έως την τελική παράδοση.',
+      capabilities: ['Μοντάζ', 'Χρωματική επεξεργασία', 'Motion graphics και VFX', 'Σχεδιασμός ήχου', 'Τελικό φινίρισμα', 'Υπότιτλοι και γλωσσική προσαρμογή'],
+      sections: [
+        ['Ξεκινάμε από το υλικό', 'Εξετάζουμε εικόνα, ήχο, brief και παραδοτέα πριν ορίσουμε τη διαδικασία. Για υπάρχουσες παραγωγές χρειαζόμαστε μορφές λήψης, αρχεία έργου, αναφορές και εκκρεμότητες. Η οργανωμένη μεταφορά προστατεύει υλικό και χρονοδιάγραμμα.'],
+        ['Δομή και επεξεργασία', 'Το μοντάζ ορίζει τη δομή και τον ρυθμό. Χρώμα, ήχος, γραφικά και οπτικά εφέ σχεδιάζονται με βάση τις ανάγκες της ταινίας. Συμφωνούμε γύρους ελέγχου και υπευθύνους εγκρίσεων ώστε τα σχόλια να παραμένουν σαφή.'],
+        ['Παράδοση για τον προορισμό', 'Τελικά αρχεία, αναλογίες εικόνας, σύντομες εκδοχές και υπότιτλοι ακολουθούν το πλάνο προβολής. Οι τεχνικές προδιαγραφές επιβεβαιώνονται για κάθε προορισμό και η παράδοση οργανώνεται γύρω από τα αρχεία που χρειάζεται η ομάδα σας.']
+      ],
+      brief: 'Στείλτε brief, πληροφορίες υλικού, ταινίες αναφοράς, προθεσμία και μορφές παράδοσης. Διευκρινίστε ποια στάδια έχουν ολοκληρωθεί και τι χρειάζεται επεξεργασία ή προσαρμογή.'
+    }
+  },
+  {
+    slug: 'photography', heroImage: '/media/studio/studio-frame-02.jpg', related: ['commercial-production', 'branded-content', 'corporate-video-production'],
+    en: {
+      title: 'Photography', summary: 'Still images, with the same attention to the frame.',
+      description: 'Commercial, corporate, product and event photography in Athens. Plan campaign stills and photography alongside your film production with Anchev Films.',
+      intro: 'A still image has its own job to do. We plan photography around the subject, the visual identity and the places the images will be used, whether as a dedicated shoot or alongside a film.',
+      capabilities: ['Commercial photography', 'Corporate portraits', 'Product photography', 'Event photography', 'Campaign stills', 'Production photography'],
+      sections: [
+        ['Define the image requirements', 'The shot list begins with use: a website, a campaign, press material, social publishing or an internal library. We agree subjects, framing, backgrounds and the required crops, so the photographs can work across their intended placements.'],
+        ['Give stills their own production plan', 'Portraits, products and events need different lighting, timing and access. When photography accompanies a film shoot, we plan dedicated time and responsibilities rather than assuming stills can happen between takes. Studio and location requirements are reviewed with the brief.'],
+        ['Select and deliver a coherent set', 'Selection, retouching and output formats are agreed as part of the scope. We define image quantities, review stages, delivery sizes and usage arrangements before the shoot, with attention to consistency across the final collection.']
+      ],
+      brief: 'Tell us the subjects, intended use, approximate number of final images, visual references, location and deadline. Include any need to coordinate photography with a film or event production.'
+    },
+    el: {
+      title: 'Φωτογραφία', summary: 'Σταθερές εικόνες, με την ίδια προσοχή στο κάδρο.',
+      description: 'Διαφημιστική, εταιρική φωτογραφία, προϊόντα και εκδηλώσεις στην Αθήνα. Φωτογραφικές παραγωγές και υλικό καμπάνιας από την Anchev Films.',
+      intro: 'Μια φωτογραφία έχει τον δικό της ρόλο. Σχεδιάζουμε τη λήψη γύρω από το θέμα, την οπτική ταυτότητα και τη χρήση της εικόνας, αυτόνομα ή μαζί με μια κινηματογραφική παραγωγή.',
+      capabilities: ['Διαφημιστική φωτογραφία', 'Εταιρικά πορτρέτα', 'Φωτογραφία προϊόντων', 'Φωτογραφία εκδηλώσεων', 'Φωτογραφίες καμπάνιας', 'Φωτογραφία παραγωγής'],
+      sections: [
+        ['Οι ανάγκες της εικόνας', 'Ξεκινάμε με τη χρήση: ιστοσελίδα, καμπάνια, υλικό Τύπου, κοινωνικά δίκτυα ή εταιρικό αρχείο. Συμφωνούμε θέματα, κάδρα, φόντα και αναλογίες ώστε οι φωτογραφίες να ανταποκρίνονται στις θέσεις προβολής τους.'],
+        ['Ξεχωριστός σχεδιασμός λήψεων', 'Πορτρέτα, προϊόντα και εκδηλώσεις χρειάζονται διαφορετικό φωτισμό, χρόνο και πρόσβαση. Όταν συνδυάζονται φωτογραφία και βίντεο, ορίζουμε χρόνο και αρμοδιότητες. Οι ανάγκες στούντιο και τοποθεσίας εξετάζονται με βάση το brief.'],
+        ['Ένα συνεκτικό τελικό σύνολο', 'Επιλογή, ρετούς και μορφές αρχείων συμφωνούνται στο εύρος της συνεργασίας. Πλήθος εικόνων, στάδια ελέγχου, μεγέθη παράδοσης και δικαιώματα χρήσης ορίζονται πριν από τη λήψη.']
+      ],
+      brief: 'Περιγράψτε θέματα, χρήση, πλήθος τελικών εικόνων, οπτικές αναφορές, τοποθεσία και προθεσμία. Αναφέρετε αν η φωτογράφιση χρειάζεται να συνδυαστεί με βίντεο ή εκδήλωση.'
+    }
+  }
+);
+services.push(
+  {
+    slug: 'narrative-production', heroImage: '/media/projects/anti-bullying/photos59.webp', heroAlt: 'Behind the scenes of Speak Up. Take Action.', hasProductionExample: true,
+    related: ['documentary-production', 'production-services-greece', 'post-production'],
+    en: {
+      title: 'Narrative production', summary: 'Short films, fiction and original projects.',
+      description: 'Narrative film production in Athens, Greece. Script development, casting, production planning, cinematography and post-production for scripted films.',
+      intro: 'We develop and produce scripted films, bringing the screenplay, visual approach and production plan into one conversation. The story guides the decisions, from the first treatment to the final master.',
+      capabilities: ['Script and treatment development', 'Short fiction', 'Casting and rehearsals', 'Location and studio production', 'Cinematography and production sound', 'Editing and finishing'],
+      sections: [
+        ['Start with the script', 'Share the screenplay, synopsis or material already in development. We discuss the characters, dramatic intention and audience, then establish which creative and production responsibilities the project needs. A treatment and visual references give the team a shared direction.'],
+        ['Build around the story', 'Casting, rehearsals, locations, art direction and the shooting schedule follow the script. We identify practical constraints early, agree the budget and responsibilities, and plan how each scene will be covered. Permissions and contributor agreements are confirmed before filming.'],
+        ['Carry the film through post', 'Editing shapes performance, structure and rhythm. Picture, sound, music and colour are reviewed as parts of the same film. We agree the delivery formats, caption and subtitle requirements, approval stages and screening needs before the final handover.']
+      ],
+      brief: 'Send a synopsis or script, development stage, intended audience and any confirmed collaborators. Include a working schedule and budget range where available, and tell us which parts of the production you want to develop together.'
+    },
+    el: {
+      title: 'Παραγωγή μυθοπλασίας', summary: 'Ταινίες μικρού μήκους και πρωτότυπα κινηματογραφικά έργα.',
+      description: 'Παραγωγή ταινιών μυθοπλασίας στην Αθήνα. Ανάπτυξη σεναρίου, casting, οργάνωση γυρισμάτων, διεύθυνση φωτογραφίας και post-production.',
+      intro: 'Αναπτύσσουμε και παράγουμε ταινίες μυθοπλασίας, συνδέοντας το σενάριο, την οπτική προσέγγιση και το πλάνο παραγωγής. Η ιστορία καθοδηγεί τις αποφάσεις, από το πρώτο treatment έως την τελική κόπια.',
+      capabilities: ['Ανάπτυξη σεναρίου και treatment', 'Ταινίες μικρού μήκους', 'Casting και πρόβες', 'Γυρίσματα σε τοποθεσίες και στούντιο', 'Διεύθυνση φωτογραφίας και ηχοληψία', 'Μοντάζ και τελική επεξεργασία'],
+      sections: [
+        ['Ξεκινάμε από το σενάριο', 'Μοιραστείτε το σενάριο, τη σύνοψη ή το υλικό που βρίσκεται σε ανάπτυξη. Συζητάμε τους χαρακτήρες, τη δραματουργική κατεύθυνση και το κοινό, ώστε να ορίσουμε τις δημιουργικές και παραγωγικές ανάγκες. Το treatment και οι οπτικές αναφορές δίνουν κοινή κατεύθυνση στην ομάδα.'],
+        ['Οργανώνουμε γύρω από την ιστορία', 'Casting, πρόβες, τοποθεσίες, σκηνικά και πρόγραμμα γυρισμάτων ακολουθούν το σενάριο. Εξετάζουμε έγκαιρα τους περιορισμούς, συμφωνούμε προϋπολογισμό και αρμοδιότητες και σχεδιάζουμε την κάλυψη κάθε σκηνής. Άδειες και συμφωνίες συμμετοχής επιβεβαιώνονται πριν από τα γυρίσματα.'],
+        ['Μέχρι την τελική κόπια', 'Το μοντάζ διαμορφώνει τις ερμηνείες, τη δομή και τον ρυθμό. Εικόνα, ήχος, μουσική και χρώμα αντιμετωπίζονται ως ενιαίο σύνολο. Μορφές παράδοσης, υπότιτλοι, στάδια εγκρίσεων και ανάγκες προβολής συμφωνούνται πριν από την τελική παράδοση.']
+      ],
+      brief: 'Στείλτε σύνοψη ή σενάριο, στάδιο ανάπτυξης, κοινό και επιβεβαιωμένους συνεργάτες. Προσθέστε χρονοδιάγραμμα και ενδεικτικό προϋπολογισμό, εφόσον υπάρχουν, και περιγράψτε ποια στάδια θέλετε να αναπτύξουμε μαζί.'
+    }
+  },
+  {
+    slug: 'documentary-production', heroImage: '/media/studio/studio-frame-02.jpg',
+    related: ['narrative-production', 'production-services-greece', 'post-production'],
+    en: {
+      title: 'Documentary films', summary: 'Real people, places and perspectives.',
+      description: 'Documentary production in Athens and Greece. Research, contributor planning, interviews, location filming, editing, sound and colour.',
+      intro: 'A documentary begins with a subject worth spending time with. We plan research, access and filming around the people at the centre of the story, leaving room for what cannot be scripted.',
+      capabilities: ['Research and treatments', 'Contributor interviews', 'Observational filming', 'Location production', 'Archive and rights planning', 'Documentary editing and finishing'],
+      sections: [
+        ['Understand the subject', 'Research and conversations with contributors shape the treatment. We establish what access is available, what needs to be verified and how the film will be used. Consent, sensitive material and editorial responsibilities are discussed before recording.'],
+        ['Make space for real life', 'A documentary schedule needs structure and room to respond. We plan interviews, locations, crew and sound around the subject, without assuming that events will follow a script. Permissions, archive rights and access arrangements are confirmed for the production.'],
+        ['Find the structure in the edit', 'The edit brings together observation, testimony and context. We review factual details, attribution and archive clearances alongside the picture and sound. The delivery plan covers the agreed masters, language versions, captions and intended screenings or platforms.']
+      ],
+      brief: 'Tell us about the subject, your relationship to it, the access available and any existing research or footage. Share the intended audience, development stage and timeframe so we can discuss the next production step.'
+    },
+    el: {
+      title: 'Παραγωγή ντοκιμαντέρ', summary: 'Πραγματικοί άνθρωποι, τόποι και οπτικές.',
+      description: 'Παραγωγή ντοκιμαντέρ στην Αθήνα και την Ελλάδα. Έρευνα, συνεντεύξεις, γυρίσματα σε τοποθεσίες, μοντάζ, ήχος και χρωματική επεξεργασία.',
+      intro: 'Ένα ντοκιμαντέρ ξεκινά από ένα θέμα που αξίζει χρόνο και προσοχή. Οργανώνουμε έρευνα, πρόσβαση και γυρίσματα γύρω από τους ανθρώπους της ιστορίας, αφήνοντας χώρο για όσα δεν μπορούν να γραφτούν εκ των προτέρων.',
+      capabilities: ['Έρευνα και treatment', 'Συνεντεύξεις', 'Παρατήρηση και καταγραφή', 'Γυρίσματα σε τοποθεσίες', 'Σχεδιασμός αρχειακού υλικού και δικαιωμάτων', 'Μοντάζ και τελική επεξεργασία'],
+      sections: [
+        ['Γνωρίζουμε το θέμα', 'Η έρευνα και οι συζητήσεις με τους συμμετέχοντες διαμορφώνουν το treatment. Εξετάζουμε την πρόσβαση, τα στοιχεία που χρειάζονται επαλήθευση και τη χρήση της ταινίας. Η συναίνεση, το ευαίσθητο υλικό και οι συντακτικές ευθύνες συζητούνται πριν από την καταγραφή.'],
+        ['Αφήνουμε χώρο στην πραγματικότητα', 'Το πρόγραμμα χρειάζεται οργάνωση και ευελιξία. Σχεδιάζουμε συνεντεύξεις, χώρους, συνεργείο και ήχο με βάση το θέμα, χωρίς να θεωρούμε ότι τα γεγονότα θα ακολουθήσουν ένα σενάριο. Άδειες, δικαιώματα αρχείου και πρόσβαση επιβεβαιώνονται για την παραγωγή.'],
+        ['Η δομή προκύπτει στο μοντάζ', 'Παρατήρηση, μαρτυρίες και πληροφορίες βρίσκουν τη θέση τους στο μοντάζ. Ελέγχουμε στοιχεία, αναφορές και άδειες αρχείου μαζί με εικόνα και ήχο. Η παράδοση καλύπτει τις συμφωνημένες εκδόσεις, τους υπότιτλους και τις ανάγκες προβολής.']
+      ],
+      brief: 'Περιγράψτε το θέμα, τη σχέση σας με αυτό, τη διαθέσιμη πρόσβαση και την έρευνα ή το υλικό που ήδη υπάρχει. Προσθέστε το κοινό, το στάδιο ανάπτυξης και το χρονοδιάγραμμα για να συζητήσουμε το επόμενο βήμα.'
+    }
+  },
+  {
+    slug: 'music-videos', heroImage: '/media/studio/studio-frame-03.jpg',
+    related: ['commercial-production', 'narrative-production', 'post-production'],
+    en: {
+      title: 'Music videos', summary: 'An artist\'s music translated to screen.',
+      description: 'Music video production in Athens. Concepts, treatments, performance and narrative filming, editing, colour and delivery for artists and labels.',
+      intro: 'A music video starts with the track and the artist. We develop a visual idea that belongs to both, then plan the performance, locations and edit around the music.',
+      capabilities: ['Concepts and treatments', 'Performance-led films', 'Narrative music videos', 'Studio and location shoots', 'Editing and colour', 'Release and social versions'],
+      sections: [
+        ['Listen before making the treatment', 'We discuss the track, artist identity, release context and visual references. A treatment establishes the concept, performance approach and image language. The production scope follows the idea and the available budget.'],
+        ['Plan the performance and the set', 'Locations, art direction, wardrobe, lighting and playback are organised around the treatment. We agree rehearsals, contributor arrangements and the shooting schedule with the artist or label. Music and image rights remain part of the production conversation.'],
+        ['Edit to the music', 'Performance, pacing and visual structure are developed together in the edit. Colour, effects and finishing follow the agreed treatment. We confirm the master track, release date, delivery ratios and any shorter versions before final approval.']
+      ],
+      brief: 'Share the track, artist or label, creative references and intended release date. Let us know about available locations, collaborators, budget range and the versions needed for the release.'
+    },
+    el: {
+      title: 'Μουσικά βίντεο', summary: 'Η μουσική και η ταυτότητα του καλλιτέχνη στην εικόνα.',
+      description: 'Παραγωγή μουσικών βίντεο στην Αθήνα. Ιδέα, treatment, γυρίσματα με ερμηνεία ή αφήγηση, μοντάζ, χρώμα και εκδόσεις για την κυκλοφορία.',
+      intro: 'Ένα μουσικό βίντεο ξεκινά από το τραγούδι και τον καλλιτέχνη. Αναπτύσσουμε μια οπτική ιδέα που τους εκφράζει και οργανώνουμε την ερμηνεία, τους χώρους και το μοντάζ γύρω από τη μουσική.',
+      capabilities: ['Ιδέα και treatment', 'Βίντεο με επίκεντρο την ερμηνεία', 'Αφηγηματικά μουσικά βίντεο', 'Γυρίσματα σε στούντιο και τοποθεσίες', 'Μοντάζ και χρωματική επεξεργασία', 'Εκδόσεις για κυκλοφορία και κοινωνικά δίκτυα'],
+      sections: [
+        ['Ακούμε πριν σχεδιάσουμε', 'Συζητάμε το τραγούδι, την ταυτότητα του καλλιτέχνη, το πλάνο κυκλοφορίας και τις οπτικές αναφορές. Το treatment ορίζει την ιδέα, την ερμηνεία και το ύφος της εικόνας. Η παραγωγή σχεδιάζεται με βάση την κατεύθυνση και τον διαθέσιμο προϋπολογισμό.'],
+        ['Προετοιμάζουμε ερμηνεία και χώρο', 'Τοποθεσίες, σκηνικά, ενδυματολογία, φωτισμός και playback οργανώνονται γύρω από το treatment. Πρόβες, συμφωνίες συμμετοχής και πρόγραμμα γυρισμάτων συντονίζονται με τον καλλιτέχνη ή τη δισκογραφική. Δικαιώματα μουσικής και εικόνας εξετάζονται πριν από την παραγωγή.'],
+        ['Μοντάζ με βάση τη μουσική', 'Ερμηνεία, ρυθμός και οπτική δομή αναπτύσσονται μαζί. Χρώμα, εφέ και τελικό φινίρισμα ακολουθούν το συμφωνημένο treatment. Επιβεβαιώνουμε το τελικό ηχητικό αρχείο, την ημερομηνία κυκλοφορίας, τις αναλογίες εικόνας και τις σύντομες εκδόσεις πριν από την έγκριση.']
+      ],
+      brief: 'Στείλτε το τραγούδι, στοιχεία καλλιτέχνη ή δισκογραφικής, δημιουργικές αναφορές και ημερομηνία κυκλοφορίας. Προσθέστε διαθέσιμους χώρους, συνεργάτες, ενδεικτικό προϋπολογισμό και τις εκδόσεις που χρειάζεστε.'
+    }
+  }
+);
+const primaryServiceOrder = ['commercial-production', 'branded-content', 'narrative-production', 'documentary-production', 'music-videos', 'post-production'];
+const serviceOrder = [...primaryServiceOrder, 'corporate-video-production', 'film-documentary-production', 'event-video-production', 'production-services-greece', 'photography', 'video-production-athens', 'live-streaming-athens'];
+services.sort((first, second) => serviceOrder.indexOf(first.slug) - serviceOrder.indexOf(second.slug));
+for (const service of services) {
+  service.primary = primaryServiceOrder.includes(service.slug);
+  if (['video-production-athens', 'live-streaming-athens'].includes(service.slug)) service.legacy = true;
+}
+
 const studio = {
   slug: 'studio',
   isStudio: true,
@@ -125,8 +394,9 @@ const studio = {
 export const servicePages = services;
 export const getSiteContentPath = (id, language = 'en') => {
   const prefix = language === 'el' ? '/el' : '';
+  if (id.startsWith('news-')) return `${prefix}/news/${id.slice(5)}`;
   if (id === 'studio') return `${prefix}/studio`;
-  if (id === 'contact') return `${prefix}/`;
+  if (id === 'contact' || id === 'about') return `${prefix}/${id}`;
   const service = services.find((entry) => id === `service-${entry.slug}`);
   return service ? `${prefix}/services/${service.slug}` : null;
 };
@@ -136,19 +406,22 @@ export const getServicePage = (pathname, managed = null) => {
   if (!page || !managed) return page;
   const language = pathname.startsWith('/el/') ? 'el' : 'en';
   const hero = managed.blocks.find((block) => block.type === 'image');
-  return { ...page, heroImage: hero?.url, heroAlt: hero?.alt,
+  return { ...page, heroImage: hero?.url || page.heroImage, heroAlt: hero?.alt || page.heroAlt,
     mediaBlocks: managed.blocks.filter((block) => block.type !== 'text' && block.type !== 'fact' && block !== hero),
     seo: managed.seo,
     [language]: { ...page[language], title: managed.heading, intro: managed.intro,
+      capabilities: managed.blocks.some((block) => block.type === 'fact') ? managed.blocks.filter((block) => block.type === 'fact').map((block) => block.text) : page[language].capabilities,
       description: managed.seo?.description || managed.intro,
       sections: managed.blocks.filter((block) => block.type === 'text').map((block) => [block.title, block.text]),
       brief: managed.body } };
 };
 export const getLanguageAlternates = (page) => ['en', 'el'].map((language) => ({ language, path: getServicePath(page, language) }));
 
-export const renderServiceLinks = (language = 'en', currentSlug = '') => services
-  .filter((page) => page.slug !== currentSlug)
-  .map((page) => `<a class="case-study__external" href="${getServicePath(page, language)}">${escapeHtml(page[language].title)}</a>`).join('');
+export const renderServiceLinks = (language = 'en', currentSlug = '') => {
+  const related = services.find((entry) => entry.slug === currentSlug)?.related;
+  return services.filter((page) => page.slug !== currentSlug && (!related || related.includes(page.slug))).slice(0, 4)
+    .map((page) => `<a class="case-study__external" href="${getServicePath(page, language)}">${escapeHtml(page[language].title)}</a>`).join('');
+};
 
 export const renderServicePageMarkup = (page, language, projects, contact) => {
   const copy = page[language];
@@ -168,6 +441,7 @@ export const renderServicePageMarkup = (page, language, projects, contact) => {
         </section>
         <div class="case-study__content">
           <p>${escapeHtml(copy.intro)}</p>
+          ${copy.capabilities?.length ? `<section class="service-capabilities"><h2>${greek ? 'Δυνατότητες παραγωγής' : 'Production capabilities'}</h2><ul>${copy.capabilities.map((capability) => `<li>${escapeHtml(capability)}</li>`).join('')}</ul></section>` : ''}
           ${copy.sections.map(([title, text], index) => `<section class="case-study__copy-section"><p class="case-study__section-label">0${index + 1}</p><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></div></section>`).join('')}
           ${(page.mediaBlocks || []).map((block) => block.type === 'image' ? `<figure><img src="${escapeHtml(block.url)}" alt="${escapeHtml(block.alt)}" loading="lazy" />${block.text ? `<figcaption>${escapeHtml(block.text)}</figcaption>` : ''}</figure>` : block.type === 'video' ? `<video src="${escapeHtml(block.url)}" controls playsinline preload="none" aria-label="${escapeHtml(block.title || copy.title)}"></video>` : `<p><a class="case-study__external" href="${escapeHtml(block.url)}">${escapeHtml(block.title || block.url)}</a></p>`).join('')}
           ${example ? `<section class="case-study__copy-section"><p class="case-study__section-label">${greek ? 'Παραγωγή' : 'Production example'}</p><div><h2>${escapeHtml(example.name)}</h2><p>${greek ? 'Ανεξάρτητη ταινία κατά του σχολικού εκφοβισμού, με μαθητές του 56ου Γυμνασίου Αθηνών. Δείτε την προετοιμασία, την παραγωγή και τους συντελεστές.' : 'An independent anti-bullying film made with students of the 56th Junior High School of Athens. Explore the brief, production approach and credits.'}</p><a class="case-study__external" href="/work/${encodeURIComponent(example.id)}">${greek ? 'Δείτε την παραγωγή' : 'Explore the production'}</a></div></section>` : ''}

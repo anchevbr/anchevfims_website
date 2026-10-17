@@ -30,8 +30,8 @@ test('structured content and localized inquiries escape untrusted content', () =
   const html = renderPageBody({ heading: '<script>bad</script>', body: 'A & B', blocks: [{ type: 'text', title: '<b>Title</b>', text: '<img onerror=bad>' }] });
   assert.equal(html.includes('<script>bad</script>'), false);
   assert.ok(html.includes('&lt;script&gt;'));
-  assert.ok(renderContactPageMarkup({ email: 'test@example.com' }, 'el').includes('Αποστολή αιτήματος'));
-  assert.ok(renderContactPageMarkup({ email: 'test@example.com' }, 'en').includes('Send inquiry'));
+  assert.ok(renderContactPageMarkup({ email: 'test@example.com' }, 'el').includes('Αποστολή brief'));
+  assert.ok(renderContactPageMarkup({ email: 'test@example.com' }, 'en').includes('Send brief'));
   assert.match(renderArticlesMarkup([{ url: 'https://example.com', title: 'Article', publishedAt: '2026-01-15' }], 'el'), /Ιαν/);
   assert.match(renderPodcastEpisodeMarkup({ title: 'Episode', duration: '01:15:00' }, 0, 'https://example.com', 'el'), /1 ώρ. 15 λεπ./);
   assert.match(renderProjectSupportingMarkup({ behindVideo: 'https://youtu.be/lINECZrijtg' }, 'el'), /Δείτε στο YouTube/);
@@ -53,7 +53,8 @@ test('homepage CMS copy is locale-specific, escaped and falls back when empty', 
     const english = renderPublicDocument(template, { store, home: true });
     const greek = renderPublicDocument(template, { store, home: true, language: 'el', route: '/el/' });
     assert.match(english, /&lt;script&gt;bad&lt;\/script&gt;<br>English copy/);
-    assert.match(english, /Existing heading/);
+    assert.equal(load(english)('#work-title').text(), 'Selected work.');
+    assert.equal(load(greek)('#work-title').text(), 'Επιλεγμένες ταινίες.');
     assert.equal(english.includes('<script>bad</script>'), false);
     assert.match(greek, /class="hero-positioning">Greek copy/);
     assert.equal(greek.includes('<br>English copy'), false);

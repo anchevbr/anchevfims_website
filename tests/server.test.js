@@ -103,12 +103,24 @@ test('live server has nonce CSP, security headers, health and private API contro
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /font\/woff2/);
   }
+  for (const subset of ['latin', 'greek', 'cyrillic']) {
+    for (const style of ['normal', 'italic']) {
+      for (const font of [`source-serif-4/source-serif-4-${subset}-standard-${style}.woff2`, `ibm-plex-sans/ibm-plex-sans-${subset}-wght-${style}.woff2`]) {
+        const response = await fetch(`${origin}/fonts/${font}`);
+        assert.equal(response.status, 200, font);
+        assert.match(response.headers.get('content-type'), /font\/woff2/);
+      }
+    }
+  }
   const response = await fetch(`${origin}/`);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(response.headers.get('x-powered-by'), null);
   assert.match(response.headers.get('content-security-policy'), /nonce-/);
   const html = await response.text();
+  assert.equal(load(html)('link[rel="preload"][as="font"]').length, 2);
+  assert.ok(load(html)('link[as="font"][href*="source-serif-4-latin-standard-normal"]').length);
+  assert.ok(load(html)('link[as="font"][href*="ibm-plex-sans-latin-wght-normal"]').length);
   assert.equal(load(html)('.brandmark img').attr('fetchpriority'), 'high');
   assert.equal(load(html)('link[rel="icon"]').length, 1);
   assert.equal(load(html)('link[rel="icon"]').attr('href'), '/assets/favicon-32.png');
@@ -149,16 +161,134 @@ test('disguised active content is rejected by the real multipart upload endpoint
 });
 
 test('contact submissions validate consent and persist real inquiries', async () => {
-  const body = { name: 'Test person', email: 'test@example.com', message: 'We would like to discuss a film production.', privacy: true };
+  const body = { name: 'Test person', email: 'test@example.com', message: 'We would like to discuss a film production.', privacy: true, submissionId: crypto.randomUUID(), productionType: 'studio', timeline: 'Spring 2027', crewSize: '12', requirements: 'A controlled interview setup.' };
   const accepted = await fetch(`${origin}/api/contact`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   assert.equal(accepted.status, 201);
   const rejected = await fetch(`${origin}/api/contact`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, privacy: false }) });
   assert.equal(rejected.status, 400);
   const inbox = await (await fetch(`${origin}/api/admin/inquiries`, { headers: { cookie } })).json();
   assert.equal(inbox.inquiries.length, 1);
+  assert.match(inbox.inquiries[0].message, /Production: Anchev Studio/);
+  assert.match(inbox.inquiries[0].message, /Crew size: 12/);
+  assert.match(inbox.inquiries[0].message, /Timeline: Spring 2027/);
+  assert.match(inbox.inquiries[0].message, /Requirements: A controlled interview setup/);
+  const retried = await fetch(`${origin}/api/contact`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal(retried.status, 201);
+  assert.equal((await retried.json()).reference, body.submissionId);
+  assert.equal((await (await fetch(`${origin}/api/admin/inquiries`, { headers: { cookie } })).json()).inquiries.length, 1);
+  const receipt = await fetch(`${origin}/api/contact`, { method: 'POST', body: new URLSearchParams({ name: body.name, email: body.email, message: body.message, privacy: 'on', locale: 'el' }) });
+  assert.equal(receipt.status, 201);
+  assert.match(receipt.headers.get('content-type'), /text\/html/);
+  assert.match(await receipt.text(), /Λάβαμε το αίτημά σας/);
+  const invalid = await fetch(`${origin}/api/contact`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, crewSize: '-1' }) });
+  assert.equal(invalid.status, 400);
+});
+
+test('brand navigation leads with work and preserves secondary destinations without invented content', async () => {
+  for (const locale of ['en', 'el']) {
+    const prefix = locale === 'el' ? '/el' : '';
+    const home = load(await (await fetch(`${origin}${prefix}/`)).text());
+    assert.deepEqual(home('.cinema-nav a').map((_index, link) => home(link).attr('href')).get(), ['work', 'studio', 'about', 'news', 'contact'].map((route) => `${prefix}/${route}`));
+    assert.deepEqual(home('.cinema-main > section').slice(0, 4).map((_index, section) => home(section).attr('id')).get(), ['home', 'work-page', 'about-page', 'services-page']);
+    assert.equal(home('#services-page .cinema-service-list > li').length, 6);
+    assert.equal(home('.cinema-footer__identity img').attr('src'), '/assets/anchevlogo.png');
+    assert.equal(home('.cinema-footer__wordmark').length, 0);
+    assert.equal(home('.cinema-news-note').length, 0);
+    assert.equal(home('#clients-page, #articles-page, #podcast-page').length, 0);
+    const services = load(await (await fetch(`${origin}${prefix}/services`)).text());
+    assert.equal(services('.cinema-service-list').first().children().length, 6);
+    assert.equal(services('.cinema-support .cinema-service-list > li').length, 7);
+    const about = load(await (await fetch(`${origin}${prefix}/about`)).text());
+    assert.match(about('.cinema-about-story').text(), /Boris Anchev/);
+    assert.equal(about('.cinema-about-story > section').length, 4);
+    assert.equal(about('blockquote').length, 0);
+  }
+});
+
+test('brand filmmaking pages provide bilingual content, canonicals and working related links', async () => {
+  for (const slug of ['narrative-production', 'documentary-production', 'music-videos']) {
+    for (const locale of ['en', 'el']) {
+      const route = `${locale === 'el' ? '/el' : ''}/services/${slug}`;
+      const response = await fetch(`${origin}${route}`);
+      assert.equal(response.status, 200, route);
+      const $ = load(await response.text());
+      assert.equal($('html').attr('lang'), locale);
+      assert.equal($('h1').length, 1);
+      assert.equal($('link[rel="canonical"]').attr('href'), `${origin}${route}`);
+      assert.ok($('link[hreflang="el"]').length);
+      assert.equal($('.service-capabilities li').length, 6);
+      assert.equal($('.case-study__copy-section').length, 4);
+      assert.equal($('.service-page__links a').length, 3);
+      assert.ok($(`link[as="font"][href*="-${locale === 'el' ? 'greek' : 'latin'}-standard-normal"]`).length);
+      assert.doesNotMatch($('.case-study__content').text(), /Between light|\[Project title\]/);
+    }
+  }
+  for (const slug of ['film-documentary-production', 'video-production-athens', 'live-streaming-athens']) {
+    assert.equal((await fetch(`${origin}/services/${slug}`)).status, 200, slug);
+  }
+});
+
+test('studio pages provide verified dimensions, real galleries and a dedicated enquiry in both languages', async () => {
+  for (const locale of ['en', 'el']) {
+    const $ = load(await (await fetch(`${origin}${locale === 'el' ? '/el' : ''}/studio`)).text());
+    assert.equal($('#studio-title').length, 1, `${locale}: ${$('h1').text()} / ${$('title').text()}`);
+    assert.equal($('.case-study__detail').length, 4);
+    assert.equal($('[data-gallery-image]').length, 3);
+    assert.equal($('#studio-enquiry #inquiry-form').length, 1);
+    assert.equal($('[name="productionType"]').attr('value'), 'studio');
+    assert.equal($('#inquiry-crew').attr('min'), '1');
+    assert.equal($('#inquiry-requirements').length, 1);
+  }
 });
 
 const adminPost = (route, body) => fetch(`${origin}/api/admin/${route}`, { method: 'POST', headers: { cookie, origin, 'x-csrf-token': csrf, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+test('News HTML, previews, translations and sitemaps share publication rules without exposing drafts', async () => {
+  let article = { id: 'news-production-notes', kind: 'news', locale: 'en', heading: 'Production notes', intro: 'An original account of a real production.', richContent: '<h2>On location</h2><p>Our production story with <strong>real detail</strong>.</p>', thumbnail: '/media/studio/studio-frame-01.jpg', imageAlt: 'A real view of the studio', publicationDate: '', category: 'studio' };
+  let response = await adminPost('news', article);
+  assert.equal(response.status, 200);
+  article = (await response.json()).saved;
+  assert.equal((await fetch(`${origin}/news/production-notes`)).status, 404);
+  assert.equal((await fetch(`${origin}/api/admin/pages/en/${article.id}/preview.html`)).status, 401);
+  const preview = await fetch(`${origin}/api/admin/pages/en/${article.id}/preview.html`, { headers: { cookie } });
+  assert.equal(preview.status, 200);
+  const previewHtml = load(await preview.text());
+  assert.match(previewHtml('.news-prose').text(), /real detail/);
+  assert.match(previewHtml('.news-meta').text(), /Draft/);
+  assert.equal(previewHtml('time').length, 0);
+  assert.ok(JSON.parse(previewHtml('script[type="application/ld+json"]').text())['@graph'].some((node) => node['@type'] === 'BlogPosting' && !node.datePublished));
+  assert.equal(preview.headers.get('x-robots-tag'), 'noindex,nofollow,noarchive');
+  response = await adminPost('news', { ...article, publicationDate: '2020-01-01T10:00:00Z', publish: true });
+  article = (await response.json()).saved;
+  let $ = load(await (await fetch(`${origin}/news/production-notes`)).text());
+  assert.equal($('h1').text(), 'Production notes');
+  assert.equal($('.news-prose h2').text(), 'On location');
+  assert.equal($('link[rel="canonical"]').attr('href'), `${origin}/news/production-notes`);
+  assert.equal($('meta[property="article:published_time"]').attr('content'), '2020-01-01T10:00:00Z');
+  assert.ok(JSON.parse($('script[type="application/ld+json"]').text())['@graph'].some((node) => node['@type'] === 'BlogPosting'));
+  assert.equal($('link[hreflang="el"]').length, 0);
+  assert.match(await (await fetch(`${origin}/news`)).text(), /href="\/news\/production-notes"/);
+  assert.equal((await fetch(`${origin}/pages/news-production-notes`, { redirect: 'manual' })).headers.get('location'), '/news/production-notes');
+  await adminPost('news', { ...article, locale: 'el', version: undefined, heading: 'Σημειώσεις παραγωγής', publish: true });
+  $ = load(await (await fetch(`${origin}/news/production-notes`)).text());
+  assert.equal($('link[hreflang="el"]').attr('href'), `${origin}/el/news/production-notes`);
+  assert.equal((await fetch(`${origin}/el/news/production-notes`)).status, 200);
+  article = (await (await adminPost('news', { ...article, heading: 'Private changes' })).json()).saved;
+  assert.doesNotMatch(await (await fetch(`${origin}/news/production-notes`)).text(), /Private changes/);
+  let sitemap = await (await fetch(`${origin}/sitemap.xml`)).text();
+  assert.match(sitemap, /<loc>[^<]+\/news\/production-notes<\/loc>/);
+  assert.doesNotMatch(sitemap, /\/pages\/news-/);
+  response = await adminPost('news', { ...article, publicationDate: '2099-01-01T10:00:00Z', publish: true });
+  article = (await response.json()).saved;
+  assert.equal(article.status, 'scheduled');
+  assert.equal((await fetch(`${origin}/news/production-notes`)).status, 404);
+  assert.equal((await (await fetch(`${origin}/api/news`)).json()).news.length, 0);
+  sitemap = await (await fetch(`${origin}/sitemap.xml`)).text();
+  assert.doesNotMatch(sitemap, new RegExp(`<loc>${origin}/news/production-notes</loc>`));
+  await adminPost(`pages/en/${article.id}/unpublish`, { version: article.version });
+  const greek = (await (await fetch(`${origin}/api/admin/news`, { headers: { cookie } })).json()).news.find((entry) => entry.locale === 'el');
+  await adminPost(`pages/el/${greek.id}/unpublish`, { version: greek.version });
+});
 
 test('media restoration enforces permissions, CSRF, stale checksums and quarantine through HTTP', async () => {
   const store = new ContentStore(directory);
@@ -280,7 +410,7 @@ test('page previews are authenticated, noindexed and contain saved drafts rather
 test('service editorial drafts preview in place and publish independently per locale', async () => {
   for (const locale of ['en', 'el']) {
     const route = `${origin}${locale === 'el' ? '/el' : ''}/services/video-production-athens`;
-    const document = { id: 'service-video-production-athens', locale, heading: `Managed ${locale} service`, intro: 'A managed introduction.', body: 'A managed production brief.', blocks: [{ type: 'text', title: 'Managed planning', text: 'Plan the approved production.' }], seo: { title: `Managed ${locale} SEO`, description: 'Approved service description.', image: '/assets/anchevlogo.png', noindex: true } };
+    const document = { id: 'service-video-production-athens', locale, heading: `Managed ${locale} service`, intro: 'A managed introduction.', body: 'A managed production brief.', blocks: [{ type: 'text', title: 'Managed planning', text: 'Plan the approved production.' }, { type: 'fact', title: 'Capability', text: 'Approved interview production' }], seo: { title: `Managed ${locale} SEO`, description: 'Approved service description.', image: '/assets/anchevlogo.png', noindex: true } };
     const draftResponse = await adminPost('pages', document);
     assert.equal(draftResponse.status, 200);
     const draft = (await draftResponse.json()).saved;
@@ -293,6 +423,8 @@ test('service editorial drafts preview in place and publish independently per lo
     assert.equal((await adminPost('pages', { ...draft, publish: true })).status, 200);
     const published = load(await (await fetch(route)).text());
     assert.equal(published('#service-title').text(), document.heading);
+    assert.equal(published('.service-capabilities li').length, 1);
+    assert.equal(published('.service-capabilities li').text(), 'Approved interview production');
     assert.equal(published('title').text(), document.seo.title);
     assert.equal(published('meta[name="robots"]').attr('content'), 'noindex,follow');
     const sitemap = load(await (await fetch(`${origin}/sitemap.xml`)).text(), { xml: true });
@@ -302,7 +434,7 @@ test('service editorial drafts preview in place and publish independently per lo
 
 test('studio facts and contact copy use private bilingual editorial drafts', async () => {
   const templates = await (await fetch(`${origin}/api/admin/page-templates`, { headers: { cookie } })).json();
-  assert.equal(templates.pages.length, 12);
+  assert.ok(templates.pages.length >= 24);
   for (const locale of ['en', 'el']) {
     for (const id of ['studio', 'contact']) {
       const template = templates.pages.find((page) => page.id === id && page.locale === locale);
@@ -310,7 +442,7 @@ test('studio facts and contact copy use private bilingual editorial drafts', asy
       const response = await adminPost('pages', document);
       assert.equal(response.status, 200);
       const saved = (await response.json()).saved;
-      const publicPath = `${locale === 'el' ? '/el' : ''}${id === 'studio' ? '/studio' : '/'}`;
+      const publicPath = `${locale === 'el' ? '/el' : ''}/${id}`;
       assert.equal((await (await fetch(`${origin}${publicPath}`)).text()).includes(document.heading), false);
       const preview = await fetch(`${origin}/api/admin/pages/${locale}/${id}/preview.html`, { headers: { cookie } });
       assert.equal(preview.status, 200);
@@ -323,7 +455,51 @@ test('studio facts and contact copy use private bilingual editorial drafts', asy
       else assert.equal(published('#inquiry-form').length, 1);
       const alias = await fetch(`${origin}${locale === 'el' ? '/el' : ''}/pages/${id}`, { redirect: 'manual' });
       assert.equal(alias.status, 301);
-      assert.equal(alias.headers.get('location'), `${publicPath}${id === 'contact' ? '#contact-page' : ''}`);
+      assert.equal(alias.headers.get('location'), publicPath);
     }
+  }
+});
+
+test('public destination pages render crawlable bilingual content, shared navigation and canonical URLs', async () => {
+  for (const locale of ['en', 'el']) {
+    for (const key of ['work', 'services', 'about', 'contact', 'press', 'podcast', 'news']) {
+      const pathname = `${locale === 'el' ? '/el' : ''}/${key}`;
+      const response = await fetch(`${origin}${pathname}`);
+      assert.equal(response.status, 200, pathname);
+      const $ = load(await response.text());
+      assert.equal($('html').attr('lang'), locale);
+      assert.equal($('h1').length, 1, pathname);
+      assert.equal($('link[rel="canonical"]').attr('href'), `${origin}${pathname}`);
+      assert.equal($('.cinema-nav a').length, 5);
+      assert.ok($(`.cinema-footer a[href="${locale === 'el' ? '/el' : ''}/news"]`).length);
+      assert.equal($('.cinema-nav a[href$="/news"]').length, 1);
+      assert.equal($('main#main-content').length, 1);
+    }
+  }
+});
+
+test('About copy previews privately and publishes to the full page and homepage in each language', async () => {
+  const { pages } = await (await fetch(`${origin}/api/admin/page-templates`, { headers: { cookie } })).json();
+  for (const locale of ['en', 'el']) {
+    const template = pages.find((page) => page.id === 'about' && page.locale === locale);
+    assert.ok(template);
+    const document = { ...template, heading: `Approved ${locale} company heading`, intro: `Approved ${locale} company introduction.` };
+    let response = await adminPost('pages', document);
+    assert.equal(response.status, 200);
+    const saved = (await response.json()).saved;
+    const route = `${locale === 'el' ? '/el' : ''}/about`;
+    assert.equal((await (await fetch(`${origin}${route}`)).text()).includes(document.heading), false);
+    const preview = await fetch(`${origin}/api/admin/pages/${locale}/about/preview.html`, { headers: { cookie } });
+    assert.equal(preview.status, 200);
+    assert.equal(load(await preview.text())('h1').text(), document.heading);
+    response = await adminPost('pages', { ...saved, publish: true });
+    assert.equal(response.status, 200);
+    const published = load(await (await fetch(`${origin}${route}`)).text());
+    assert.equal(published('h1').text(), document.heading);
+    assert.equal(published('.cinema-about-intro').text(), document.intro);
+    assert.equal(published('.cinema-about-story > section > div > h2').length, document.blocks.filter((block) => block.type === 'text').length);
+    const home = load(await (await fetch(`${origin}${locale === 'el' ? '/el/' : '/'}`)).text());
+    assert.equal(home('#about-page h2').text(), document.heading);
+    assert.equal(home('#about-page .cinema-about p:not(.section-kicker)').text(), document.intro);
   }
 });

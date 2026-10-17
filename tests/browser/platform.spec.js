@@ -20,6 +20,142 @@ test('public locales fit and optional tracking stays off until consent', async (
   expect(errors).toEqual([]);
 });
 
+test('brand menu contains keyboard focus and restores its opener', async ({ page }) => {
+  for (const route of ['/', '/el/']) {
+    await page.goto(route);
+    const consent = page.locator('[data-consent-reject]');
+    if (await consent.isVisible()) await consent.click();
+    const opener = page.locator('#cinema-menu > summary');
+    await opener.click();
+    const menu = page.locator('#cinema-menu-sheet');
+    const close = menu.locator('[data-cinema-menu-close]');
+    const last = menu.locator('a[href]').last();
+    await expect(close).toBeFocused();
+    await close.press('Shift+Tab');
+    await expect(last).toBeFocused();
+    await last.press('Tab');
+    await expect(close).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(opener).toBeFocused();
+    await expect(page.locator('#main-content')).not.toHaveAttribute('inert');
+    await opener.click();
+    await close.click();
+    await expect(menu).toBeHidden();
+    await expect(opener).toBeFocused();
+  }
+});
+
+test('destination pages provide bilingual navigation, readable layouts and working work filters', async ({ page }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  for (const locale of ['en', 'el']) {
+    for (const key of ['work', 'services', 'about', 'contact', 'press', 'podcast', 'news']) {
+      await page.goto(`${locale === 'el' ? '/el' : ''}/${key}`);
+      await expect(page.locator('main h1')).toBeVisible();
+      expect(await page.locator('h1').count()).toBe(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expect(page.locator('.cinema-footer a[href$="/news"]')).toBeAttached();
+      if (key === 'services') {
+        await expect(page.locator('.cinema-overview-content > .cinema-service-list > li')).toHaveCount(6);
+        await expect(page.locator('.cinema-support .cinema-service-list > li')).toHaveCount(7);
+      }
+      if (key === 'work') {
+        await page.locator('#work-search').fill('No film matches this unique query');
+        await expect(page.locator('#work-no-results')).toBeVisible();
+        await page.locator('#work-search').fill('');
+        await expect(page.locator('#work-no-results')).toBeHidden();
+      }
+      if (locale === 'en' && key === 'services') await page.screenshot({ path: testInfo.outputPath('services-index.png'), fullPage: true });
+    }
+  }
+  expect(errors).toEqual([]);
+});
+
+test('responsive cinematic typography fits all required screen widths', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Explicit width matrix runs once; other projects cover native mobile engines.');
+  test.setTimeout(90000);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const width of [1920, 1440, 1280, 1024, 768, 430, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const route of ['/', '/el/', '/el/services/film-documentary-production']) {
+      await page.goto(route);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width} ${route}`).toBe(true);
+      const bounds = await page.locator('h1').evaluate((heading) => {
+        const range = document.createRange(); range.selectNodeContents(heading);
+        const rectangle = range.getBoundingClientRect(); return { left: rectangle.left, right: rectangle.right };
+      });
+      expect(bounds.left, `${width} ${route} left`).toBeGreaterThanOrEqual(-1);
+      expect(bounds.right, `${width} ${route} right`).toBeLessThanOrEqual(width + 1);
+    }
+  }
+});
+
+test('studio gallery supports keyboard navigation, dismissal and focus restoration', async ({ page }, testInfo) => {
+  for (const locale of ['en', 'el']) {
+    await page.goto(`${locale === 'el' ? '/el' : ''}/studio`);
+    const first = page.locator('[data-gallery-image]').first();
+    await first.click();
+    const dialog = page.getByRole('dialog', { name: locale === 'el' ? 'Συλλογή εικόνων' : 'Image gallery', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('[aria-live]')).toHaveText('1 / 3');
+    await page.keyboard.press('ArrowRight');
+    await expect(dialog.locator('[aria-live]')).toHaveText('2 / 3');
+    await expect(dialog.locator('img')).toBeVisible();
+    expect(await dialog.locator('img').evaluate((image) => image.complete && image.naturalWidth > 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`studio-gallery-${locale}.png`) });
+    await page.keyboard.press('Escape');
+    await expect(dialog).not.toBeVisible();
+    await expect(first).toBeFocused();
+    await expect(page.locator('#studio-enquiry #inquiry-crew')).toBeAttached();
+  }
+});
+
+test('showreel opens on demand, contains keyboard focus and restores the trigger', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-consent-reject]').click();
+  const trigger = page.locator('[data-open-reel]').first();
+  await expect(page.locator('#reel-player-video')).not.toHaveAttribute('src');
+  await trigger.click();
+  await expect(page.locator('#reel-player')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#reel-player button[data-close-reel]')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  expect(await page.locator('#reel-player').evaluate((player) => player.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Tab');
+  expect(await page.locator('#reel-player').evaluate((player) => player.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#reel-player')).toHaveAttribute('aria-hidden', 'true');
+  await expect(trigger).toBeFocused();
+  expect(await page.locator('main').evaluate((main) => main.inert)).toBe(false);
+});
+
+test('brand inquiry errors focus a summary and preserve the brief after a failed request', async ({ page }) => {
+  await page.goto('/contact');
+  await page.locator('[data-consent-reject]').click();
+  await page.locator('#inquiry-name').fill('Film producer');
+  await page.locator('#inquiry-email').fill('not-an-email');
+  await page.locator('#inquiry-type').selectOption('music-videos');
+  await page.locator('#inquiry-message').fill('A music video production in Athens, with studio filming.');
+  await page.locator('#inquiry-privacy').check();
+  let requests = 0;
+  await page.route('**/api/contact', async (route) => { requests++; await route.fulfill({ status: 503, json: { error: 'Temporarily unavailable' } }); });
+  await page.locator('#inquiry-form [type="submit"]').click();
+  await expect(page.locator('#inquiry-errors')).toBeFocused();
+  await expect(page.locator('#inquiry-email')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#inquiry-errors')).toContainText('@');
+  expect(requests).toBe(0);
+  await page.locator('#inquiry-errors a[href="#inquiry-email"]').click();
+  await expect(page.locator('#inquiry-email')).toBeFocused();
+  await page.locator('#inquiry-email').fill('producer@example.invalid');
+  await page.locator('#inquiry-form [type="submit"]').click();
+  await expect(page.locator('#inquiry-status')).toContainText('could not be sent');
+  await expect(page.locator('#inquiry-name')).toHaveValue('Film producer');
+  await expect(page.locator('#inquiry-type')).toHaveValue('music-videos');
+  await expect(page.locator('#inquiry-message')).toHaveValue(/studio filming/);
+  await expect(page.locator('#inquiry-errors')).toBeHidden();
+  expect(requests).toBe(1);
+});
+
 test('Greek inquiry submits once with explicit consent and shows a real receipt', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/el/');
@@ -57,14 +193,17 @@ test('admin sign-in, draft isolation and publication work through the real UI', 
 });
 
 test('admin and public pages have no automated accessibility violations', async ({ page }) => {
-  test.setTimeout(90000);
+  test.setTimeout(180000);
   const { projects } = await (await page.request.get('/api/projects')).json();
   const services = servicePages.flatMap((service) => ['en', 'el'].map((language) => getServicePath(service, language)));
-  for (const route of ['/admin', '/privacy', '/el/privacy', '/', '/el/', '/studio', '/el/studio', ...services, ...projects.slice(0, 1).map((project) => `/work/${project.id}`)]) {
+  const destinations = ['work', 'services', 'about', 'contact', 'press', 'podcast', 'news'].flatMap((key) => [`/${key}`, `/el/${key}`]);
+  const findings = [];
+  for (const route of ['/admin', '/privacy', '/el/privacy', '/', '/el/', '/studio', '/el/studio', ...destinations, ...services, ...projects.slice(0, 1).map((project) => `/work/${project.id}`)]) {
     await page.goto(route);
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
-    expect(result.violations.map((entry) => ({ id: entry.id, nodes: entry.nodes.map((node) => node.target) }))).toEqual([]);
+    findings.push(...result.violations.map((entry) => ({ route, id: entry.id, nodes: entry.nodes.map((node) => node.target) })));
   }
+  expect(findings).toEqual([]);
 });
 
 test('reduced motion gets a server-rendered real-film poster without downloading the hero video', async ({ page }) => {
@@ -84,7 +223,7 @@ test('deferred story images load on scroll and remain usable without JavaScript'
   await page.locator('[data-consent-reject]').click();
   await page.locator('.tagline-story').scrollIntoViewIfNeeded();
   const first = page.locator('.tagline-story-image').first();
-  await expect.poll(() => first.evaluate((image) => image.currentSrc.includes('story-ideas') && image.naturalWidth > 1)).toBe(true);
+  await expect.poll(() => first.evaluate((image) => image.currentSrc.includes('/media/projects/') && image.naturalWidth > 1)).toBe(true);
   const context = await browser.newContext({ javaScriptEnabled: false, baseURL: new URL(page.url()).origin, viewport: page.viewportSize() });
   try {
     const fallback = await context.newPage();
@@ -103,6 +242,13 @@ test('Greek legal controls show localized cookies and navigate to the canonical 
   await expect(page.locator('#panel-cookies').getByRole('heading', { name: 'Απαραίτητη αποθήκευση', exact: true })).toBeVisible();
   await page.locator('#panel-cookies .panel-close').click();
   await page.locator('[data-consent-reject]').click();
+  await page.locator('.cinema-footer a[href$="#panel-terms"]').click();
+  await expect(page.locator('#panel-terms')).toBeVisible();
+  await page.locator('#panel-terms .panel-close').click();
+  await page.goto('/el/contact');
+  await page.locator('.cinema-footer a[href$="#panel-terms"]').click();
+  await expect(page.locator('#panel-terms')).toBeVisible();
+  await page.locator('#panel-terms .panel-close').click();
   await page.locator('a.legal-link[href="/el/privacy"]').click();
   await expect(page).toHaveURL(/\/el\/privacy$/);
   await expect(page.getByRole('heading', { name: 'Πολιτική απορρήτου', exact: true })).toBeVisible();
@@ -141,6 +287,54 @@ const signIn = async (page) => {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
 };
+
+test('News editor saves, previews, publishes, schedules and removes an article without static HTML editing', async ({ page }, testInfo) => {
+  page.on('dialog', (dialog) => dialog.accept());
+  await signIn(page);
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole('link', { name: 'News', exact: true }).click();
+  await page.getByRole('button', { name: 'New article', exact: true }).click();
+  const slug = `browser-news-${testInfo.project.name}-${Date.now()}`;
+  await page.getByLabel('Headline', { exact: true }).fill('An isolated production update');
+  await page.getByLabel('URL slug', { exact: true }).fill(slug);
+  await page.getByLabel('Featured image', { exact: true }).fill('/media/studio/studio-frame-01.jpg');
+  await page.getByLabel('Featured image alt text', { exact: true }).fill('A real studio view');
+  await page.getByLabel('Publish at (Europe/Athens)', { exact: true }).fill('2020-01-01T12:00');
+  await page.getByRole('textbox', { name: 'Article content', exact: true }).fill('A real editorial workflow tested in an isolated database.');
+  const editorAccessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  expect(editorAccessibility.violations.map((entry) => ({ id: entry.id, nodes: entry.nodes.map((node) => node.target) }))).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.locator('#news-save-state')).toContainText('Draft saved');
+  expect((await page.request.get(`/news/${slug}`)).status()).toBe(404);
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.frameLocator('iframe[title="Article draft preview"]').getByRole('heading', { name: 'An isolated production update', exact: true })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Publish / schedule', exact: true }).click();
+  await expect(page.locator('#news-save-state')).toContainText('Published');
+  expect((await page.request.get(`/news/${slug}`)).status()).toBe(200);
+  const articlePage = await page.context().newPage();
+  try {
+    await articlePage.goto(`/news/${slug}`);
+    await expect(articlePage.getByRole('heading', { level: 1 })).toHaveText('An isolated production update');
+    const accessibility = await new AxeBuilder({ page: articlePage }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+    expect(accessibility.violations.map((entry) => ({ id: entry.id, nodes: entry.nodes.map((node) => node.target) }))).toEqual([]);
+    if (await articlePage.locator('[data-consent-reject]').isVisible()) await articlePage.locator('[data-consent-reject]').click();
+    await articlePage.screenshot({ path: testInfo.outputPath('news-article.png'), fullPage: true });
+    await articlePage.goto('/news');
+    await expect(articlePage.getByRole('heading', { name: 'An isolated production update', exact: true })).toBeVisible();
+    await articlePage.screenshot({ path: testInfo.outputPath('news-index.png'), fullPage: true });
+  } finally { await articlePage.close(); }
+  await page.getByLabel('Publish at (Europe/Athens)', { exact: true }).fill('2099-07-01T12:00');
+  await page.getByRole('button', { name: 'Publish / schedule', exact: true }).click();
+  await expect(page.locator('#news-save-state')).toContainText('Scheduled');
+  expect((await page.request.get(`/news/${slug}`)).status()).toBe(404);
+  await page.getByRole('button', { name: 'Unpublish', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Unpublish', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete article', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'New article', exact: true })).toBeVisible();
+});
 
 test('page draft preview, revisions, unpublish and delete work in the console', async ({ page }, testInfo) => {
   page.on('dialog', (dialog) => dialog.accept());
@@ -387,7 +581,7 @@ test('homepage copy and SEO settings save through the console in both locales', 
         await (await navigation).waitForLoadState('domcontentloaded');
         await expect(preview.locator('.hero-positioning')).toHaveText(`${target} opening ${testInfo.project.name}`);
       }
-      const studioLink = preview.locator('.desktop-nav a[href*="path=%2Fstudio"]');
+      const studioLink = preview.locator('.cinema-nav a[href*="path=%2Fstudio"]');
       const studioUrl = await studioLink.getAttribute('href');
       const studio = await page.request.get(studioUrl);
       expect(studio.status()).toBe(200);

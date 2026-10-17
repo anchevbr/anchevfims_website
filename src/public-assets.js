@@ -13,7 +13,7 @@ export const createPublicAssets = async (publicDir) => {
   } };
   const options = { bundle: true, minify: true, write: false, logLevel: 'silent', plugins: [resolvePublic], target: ['chrome120', 'firefox120', 'safari17'] };
   const javascript = await build({ ...options, entryPoints: [path.join(publicDir, 'scripts/app.js')], format: 'esm' });
-  const styles = ['base', 'layout', 'about', 'projects', 'experience', 'consent', 'main', 'refinements'];
+  const styles = ['base', 'layout', 'about', 'projects', 'experience', 'consent', 'main', 'refinements', 'cinema'];
   const stylesheet = await build({ ...options, stdin: { contents: styles.map((name) => `@import "/styles/${name}.css";`).join('\n'), loader: 'css', resolveDir: publicDir }, external: ['/assets/*', '/media/*', '/uploads/*', '/fonts/*'] });
   const assets = [
     { extension: 'js', type: 'text/javascript', content: javascript.outputFiles[0].text },
